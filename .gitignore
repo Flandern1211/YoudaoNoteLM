@@ -1,0 +1,49 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+MindTrace
+
+# Test binary
+*.test
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor directory (uncomment if not vendoring)
+# vendor/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# Build output
+/build/
+/dist/
+/out/
+
+
+# claude
+.claude
+.superpowers
