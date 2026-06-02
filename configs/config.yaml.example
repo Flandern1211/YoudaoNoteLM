@@ -1,0 +1,38 @@
+# MindTrace 配置文件
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+# MySQL 数据库配置
+database:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "your_password"
+  dbname: "mindtrace"
+  charset: "utf8mb4"
+  parse_time: true
+  loc: "Local"
+
+# Redis 配置
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""  # 无密码留空
+  db: 0         # 数据库编号 0-15
+
+# Milvus 向量数据库配置
+milvus:
+  host: "localhost"
+  port: 19530
+
+# JWT 配置
+jwt:
+  secret: "PevO6rMwcRidm1uTqHDWszSUob3EBAKN4f09F7CG"
+  expiration: "168h"
+
+# MCP Server 配置
+mcp:
+  markitdown_url: "http://localhost:3001"
