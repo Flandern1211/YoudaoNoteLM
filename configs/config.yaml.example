@@ -30,8 +30,10 @@ milvus:
 
 # JWT 配置
 jwt:
-  secret: "PevO6rMwcRidm1uTqHDWszSUob3EBAKN4f09F7CG"
-  expiration: "168h"
+  secret: "your-secret-key-here"  # 请修改为随机生成的密钥
+  access_token_exp: "15m"     # Access Token 过期时间：15 分钟
+  refresh_token_exp: "168h"   # Refresh Token 过期时间：7 天
+  issuer: "mindtrace"         # Token 签发者
 
 # MCP Server 配置
 mcp:

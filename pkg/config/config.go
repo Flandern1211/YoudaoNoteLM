@@ -44,8 +44,10 @@ type MilvusConfig struct {
 
 // JWTConfig JWT 配置
 type JWTConfig struct {
-	Secret     string `yaml:"secret"`
-	Expiration string `yaml:"expiration"`
+	Secret          string `yaml:"secret"`
+	AccessTokenExp  string `yaml:"access_token_exp"`  // Access Token 过期时间，如 "15m"
+	RefreshTokenExp string `yaml:"refresh_token_exp"` // Refresh Token 过期时间，如 "168h"（7天）
+	Issuer          string `yaml:"issuer"`            // Token 签发者
 }
 
 // MCPConfig MCP Server 配置

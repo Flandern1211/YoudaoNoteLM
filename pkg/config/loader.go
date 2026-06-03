@@ -80,8 +80,11 @@ func setDefaults(config *Config) {
 	if config.Milvus.Port == 0 {
 		config.Milvus.Port = 19530
 	}
-	if config.JWT.Expiration == "" {
-		config.JWT.Expiration = "168h" // 7 天
+	if config.JWT.AccessTokenExp == "" {
+		config.JWT.AccessTokenExp = "15m" // 15 分钟
+	}
+	if config.JWT.RefreshTokenExp == "" {
+		config.JWT.RefreshTokenExp = "168h" // 7 天
 	}
 	if config.MCP.MarkItDownURL == "" {
 		config.MCP.MarkItDownURL = "http://localhost:3001"
