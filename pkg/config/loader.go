@@ -50,6 +50,13 @@ func Load(configPath string) (*Config, error) {
 	if val := os.Getenv("JWT_SECRET"); val != "" {
 		config.JWT.Secret = val
 	}
+	if val := os.Getenv("EMAIL_PASSWORD"); val != "" {
+		config.Email.Password = val
+	}
+	// 设置默认发件人地址
+	if config.Email.From == "" {
+		config.Email.From = config.Email.Username
+	}
 
 	globalConfig = config
 	return config, nil

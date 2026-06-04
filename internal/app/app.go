@@ -128,12 +128,16 @@ func (a *App) initDependencies() {
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
 
 	// 创建 Service
-	userSvc := service.NewUserService(userRepo)
-	authSvc := service.NewAuthService(userRepo, userSvc)
+	emailSvc := service.NewEmailService()
+	verifyCodeSvc := service.NewVerifyCodeService(a.redis, emailSvc)
+	captchaSvc := service.NewCaptchaService(a.redis)
+	tokenBlacklistSvc := service.NewTokenBlacklistService(a.redis)
+	userSvc := service.NewUserService(userRepo, verifyCodeSvc)
+	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc)
+	a.router = api.NewRouter(userSvc, authSvc, captchaSvc, tokenBlacklistSvc,sourceSvc)
 }
 
 // initRouter 初始化路由

@@ -26,6 +26,13 @@ const (
 	CodeUserDisabled       = 1004
 	CodeInvalidToken       = 1005
 	CodeTokenExpired       = 1006
+	CodeUserLocked         = 1007
+
+	// 验证码错误 11xx
+	CodeVerifyCodeExpired     = 1101
+	CodeVerifyCodeInvalid     = 1102
+	CodeVerifyCodeLocked      = 1103
+	CodeVerifyCodeTooFrequent = 1104
 
 	// 参数错误 2xxx
 	CodeInvalidParam     = 2001
@@ -67,10 +74,15 @@ var codeMessages = map[int]string{
 	CodeServiceUnavailable:    "服务不可用",
 	CodeUserNotFound:          "用户不存在",
 	CodeUserAlreadyExists:     "用户已存在",
-	CodeInvalidCredentials:    "用户名或密码错误",
+	CodeInvalidCredentials:    "邮箱或密码错误",
 	CodeUserDisabled:          "用户已被禁用",
+	CodeUserLocked:            "账户已被锁定，请15分钟后重试",
 	CodeInvalidToken:          "无效的令牌",
 	CodeTokenExpired:          "令牌已过期",
+	CodeVerifyCodeExpired:     "验证码已过期，请重新获取",
+	CodeVerifyCodeInvalid:     "验证码错误",
+	CodeVerifyCodeLocked:      "验证码输入错误次数过多，请重新获取",
+	CodeVerifyCodeTooFrequent: "验证码发送过于频繁，请60秒后重试",
 	CodeInvalidParam:          "参数错误",
 	CodeMissingParam:          "缺少必要参数",
 	CodeParamFormatError:      "参数格式错误",

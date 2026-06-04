@@ -52,11 +52,18 @@ var (
 	ErrUserNotFound       = NewDefault(CodeUserNotFound)
 	ErrUserAlreadyExists  = NewDefault(CodeUserAlreadyExists)
 	ErrUserDisabled       = NewDefault(CodeUserDisabled)
+	ErrUserLocked         = NewDefault(CodeUserLocked)
 	ErrInvalidCredentials = NewDefault(CodeInvalidCredentials)
 	ErrInvalidToken       = NewDefault(CodeInvalidToken)
 	ErrTokenExpired       = NewDefault(CodeTokenExpired)
 	ErrInvalidParam       = NewDefault(CodeInvalidParam)
 	ErrMissingParam       = NewDefault(CodeMissingParam)
+
+	// 验证码相关错误
+	ErrVerifyCodeExpired     = NewDefault(CodeVerifyCodeExpired)
+	ErrVerifyCodeInvalid     = NewDefault(CodeVerifyCodeInvalid)
+	ErrVerifyCodeLocked      = NewDefault(CodeVerifyCodeLocked)
+	ErrVerifyCodeTooFrequent = NewDefault(CodeVerifyCodeTooFrequent)
 
 	ErrUnsupportedFormat      = NewDefault(CodeUnsupportedFormat)
 	ErrFileTooLarge           = NewDefault(CodeFileTooLarge)
