@@ -10,25 +10,19 @@ import (
 
 // Controller 用户控制器
 type Controller struct {
-	userService service.UserService
+	userService    service.UserService
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewController 创建用户控制器
-func NewController(userService service.UserService) *Controller {
+func NewController(userService service.UserService, tokenBlacklist service.TokenBlacklistService) *Controller {
 	return &Controller{
-		userService: userService,
+		userService:    userService,
+		tokenBlacklist: tokenBlacklist,
 	}
 }
 
 // GetProfile 获取当前用户信息
-// @Summary 获取当前用户信息
-// @Description 获取当前登录用户的详细信息
-// @Tags 用户
-// @Accept json
-// @Produce json
-// @Security Bearer
-// @Success 200 {object} response.Response
-// @Router /api/v1/user/profile [get]
 func (ctrl *Controller) GetProfile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	if userID == 0 {
@@ -47,15 +41,6 @@ func (ctrl *Controller) GetProfile(c *gin.Context) {
 }
 
 // UpdateProfile 更新用户信息
-// @Summary 更新用户信息
-// @Description 更新当前登录用户的信息
-// @Tags 用户
-// @Accept json
-// @Produce json
-// @Security Bearer
-// @Param request body request.UpdateUserRequest true "更新信息"
-// @Success 200 {object} response.Response
-// @Router /api/v1/user/profile [put]
 func (ctrl *Controller) UpdateProfile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	if userID == 0 {
@@ -78,15 +63,6 @@ func (ctrl *Controller) UpdateProfile(c *gin.Context) {
 }
 
 // ChangePassword 修改密码
-// @Summary 修改密码
-// @Description 修改当前登录用户的密码
-// @Tags 用户
-// @Accept json
-// @Produce json
-// @Security Bearer
-// @Param request body request.ChangePasswordRequest true "密码信息"
-// @Success 200 {object} response.Response
-// @Router /api/v1/user/password [post]
 func (ctrl *Controller) ChangePassword(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	if userID == 0 {
@@ -109,16 +85,6 @@ func (ctrl *Controller) ChangePassword(c *gin.Context) {
 }
 
 // ListUsers 获取用户列表（分页）
-// @Summary 获取用户列表
-// @Description 分页获取用户列表
-// @Tags 用户
-// @Accept json
-// @Produce json
-// @Security Bearer
-// @Param page query int true "页码" minimum(1)
-// @Param size query int true "每页大小" minimum(1) maximum(100)
-// @Success 200 {object} response.Response
-// @Router /api/v1/user/list [get]
 func (ctrl *Controller) ListUsers(c *gin.Context) {
 	var req request.UserListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {

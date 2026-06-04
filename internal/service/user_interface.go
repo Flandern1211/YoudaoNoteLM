@@ -5,12 +5,13 @@ import (
 	dto "YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/pkg/response"
+	"context"
 )
 
 // UserService 用户服务接口
 type UserService interface {
-	// Register 用户注册
-	Register(req *request.RegisterRequest) error
+	// Register 用户注册（邮箱+验证码）
+	Register(ctx context.Context, req *request.RegisterRequest) error
 	// GetUserByID 根据 ID 获取用户
 	GetUserByID(id uint) (*entity.User, error)
 	// UpdateUser 更新用户信息

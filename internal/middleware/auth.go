@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"YoudaoNoteLm/internal/service"
 	"YoudaoNoteLm/pkg/jwt"
 	"YoudaoNoteLm/pkg/response"
 	"strings"
@@ -15,8 +16,8 @@ const (
 	ContextUsername = "username"
 )
 
-// Auth JWT 认证中间件
-func Auth() gin.HandlerFunc {
+// Auth JWT 认证中间件（仅接受 Access Token，检查黑名单）
+func Auth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从 Header 获取 Authorization
 		authHeader := c.GetHeader("Authorization")
@@ -38,6 +39,26 @@ func Auth() gin.HandlerFunc {
 		claims, err := jwt.ParseToken(parts[1])
 		if err != nil {
 			response.Unauthorized(c, err.Error())
+			c.Abort()
+			return
+		}
+
+		// 必须是 access token
+		if claims.TokenType != jwt.AccessToken {
+			response.Unauthorized(c, "请使用 access_token 进行认证")
+			c.Abort()
+			return
+		}
+
+		// 检查 token 是否已被吊销
+		revoked, err := blacklist.IsRevoked(c.Request.Context(), claims.ID)
+		if err != nil {
+			response.InternalError(c, "验证令牌状态失败")
+			c.Abort()
+			return
+		}
+		if revoked {
+			response.Unauthorized(c, "令牌已失效，请重新登录")
 			c.Abort()
 			return
 		}
@@ -66,8 +87,8 @@ func GetUsername(c *gin.Context) string {
 	return ""
 }
 
-// OptionalAuth 可选的 JWT 认证中间件
-func OptionalAuth() gin.HandlerFunc {
+// OptionalAuth 可选的 JWT 认证中间件（仅接受 Access Token，检查黑名单）
+func OptionalAuth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -82,9 +103,13 @@ func OptionalAuth() gin.HandlerFunc {
 		}
 
 		claims, err := jwt.ParseToken(parts[1])
-		if err == nil {
-			c.Set(ContextUserID, claims.GetUserID())
-			c.Set(ContextUsername, claims.GetUsername())
+		if err == nil && claims.TokenType == jwt.AccessToken {
+			// 检查黑名单
+			revoked, _ := blacklist.IsRevoked(c.Request.Context(), claims.ID)
+			if !revoked {
+				c.Set(ContextUserID, claims.GetUserID())
+				c.Set(ContextUsername, claims.GetUsername())
+			}
 		}
 
 		c.Next()

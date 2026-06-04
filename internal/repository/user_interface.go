@@ -2,6 +2,7 @@ package repository
 
 import (
 	"YoudaoNoteLm/internal/model/entity"
+	"time"
 )
 
 // UserRepository 用户仓储接口
@@ -24,4 +25,10 @@ type UserRepository interface {
 	ExistsByUsername(username string) (bool, error)
 	// ExistsByEmail 检查邮箱是否存在
 	ExistsByEmail(email string) (bool, error)
+	// UpdateLoginAttempts 更新登录失败次数
+	UpdateLoginAttempts(id uint, attempts int) error
+	// LockUser 锁定用户到指定时间
+	LockUser(id uint, until time.Time) error
+	// ResetLoginAttempts 重置登录失败次数
+	ResetLoginAttempts(id uint) error
 }
