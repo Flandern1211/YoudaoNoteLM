@@ -3,6 +3,7 @@ package repository
 import (
 	"YoudaoNoteLm/internal/model/entity"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -102,4 +103,25 @@ func (r *userRepository) ExistsByEmail(email string) (bool, error) {
 	var count int64
 	err := r.db.Model(&entity.User{}).Where("email = ?", email).Count(&count).Error
 	return count > 0, err
+}
+
+// UpdateLoginAttempts 更新登录失败次数
+func (r *userRepository) UpdateLoginAttempts(id uint, attempts int) error {
+	return r.db.Model(&entity.User{}).Where("id = ?", id).Update("failed_attempts", attempts).Error
+}
+
+// LockUser 锁定用户到指定时间
+func (r *userRepository) LockUser(id uint, until time.Time) error {
+	return r.db.Model(&entity.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"failed_attempts": 0,
+		"locked_until":    until,
+	}).Error
+}
+
+// ResetLoginAttempts 重置登录失败次数
+func (r *userRepository) ResetLoginAttempts(id uint) error {
+	return r.db.Model(&entity.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"failed_attempts": 0,
+		"locked_until":    nil,
+	}).Error
 }

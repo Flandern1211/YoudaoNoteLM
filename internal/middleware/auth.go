@@ -15,7 +15,7 @@ const (
 	ContextUsername = "username"
 )
 
-// Auth JWT 认证中间件
+// Auth JWT 认证中间件（仅接受 Access Token）
 func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从 Header 获取 Authorization
@@ -38,6 +38,13 @@ func Auth() gin.HandlerFunc {
 		claims, err := jwt.ParseToken(parts[1])
 		if err != nil {
 			response.Unauthorized(c, err.Error())
+			c.Abort()
+			return
+		}
+
+		// 必须是 access token
+		if claims.TokenType != jwt.AccessToken {
+			response.Unauthorized(c, "请使用 access_token 进行认证")
 			c.Abort()
 			return
 		}
@@ -66,7 +73,7 @@ func GetUsername(c *gin.Context) string {
 	return ""
 }
 
-// OptionalAuth 可选的 JWT 认证中间件
+// OptionalAuth 可选的 JWT 认证中间件（仅接受 Access Token）
 func OptionalAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -82,7 +89,7 @@ func OptionalAuth() gin.HandlerFunc {
 		}
 
 		claims, err := jwt.ParseToken(parts[1])
-		if err == nil {
+		if err == nil && claims.TokenType == jwt.AccessToken {
 			c.Set(ContextUserID, claims.GetUserID())
 			c.Set(ContextUsername, claims.GetUsername())
 		}
