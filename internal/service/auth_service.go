@@ -7,6 +7,7 @@ import (
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/pkg/jwt"
 	"context"
+	"fmt"
 	"time"
 
 	bizerrors "YoudaoNoteLm/pkg/errors"
@@ -21,19 +22,21 @@ const (
 
 // authService 认证服务实现
 type authService struct {
-	userRepo      repository.UserRepository
-	userService   UserService
-	verifyCodeSvc VerifyCodeService
-	captchaSvc    CaptchaService
+	userRepo       repository.UserRepository
+	userService    UserService
+	verifyCodeSvc  VerifyCodeService
+	captchaSvc     CaptchaService
+	tokenBlacklist TokenBlacklistService
 }
 
 // NewAuthService 创建认证服务
-func NewAuthService(userRepo repository.UserRepository, userService UserService, verifyCodeSvc VerifyCodeService, captchaSvc CaptchaService) AuthService {
+func NewAuthService(userRepo repository.UserRepository, userService UserService, verifyCodeSvc VerifyCodeService, captchaSvc CaptchaService, tokenBlacklist TokenBlacklistService) AuthService {
 	return &authService{
-		userRepo:      userRepo,
-		userService:   userService,
-		verifyCodeSvc: verifyCodeSvc,
-		captchaSvc:    captchaSvc,
+		userRepo:       userRepo,
+		userService:    userService,
+		verifyCodeSvc:  verifyCodeSvc,
+		captchaSvc:     captchaSvc,
+		tokenBlacklist: tokenBlacklist,
 	}
 }
 
@@ -103,7 +106,7 @@ func (s *authService) handleLoginFailure(user *entity.User) {
 }
 
 // RefreshToken 用 refresh token 换取新的 token 对
-func (s *authService) RefreshToken(refreshToken string) (*dto.LoginResponse, error) {
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResponse, error) {
 	claims, err := jwt.ParseToken(refreshToken)
 	if err != nil {
 		return nil, err
@@ -112,6 +115,15 @@ func (s *authService) RefreshToken(refreshToken string) (*dto.LoginResponse, err
 	// 必须是 refresh token
 	if claims.TokenType != jwt.RefreshToken {
 		return nil, bizerrors.New(bizerrors.CodeInvalidToken, "请使用 refresh_token 进行刷新")
+	}
+
+	// 检查 refresh token 是否已被吊销
+	revoked, err := s.tokenBlacklist.IsRevoked(ctx, claims.ID)
+	if err != nil {
+		return nil, err
+	}
+	if revoked {
+		return nil, bizerrors.New(bizerrors.CodeInvalidToken, "refresh token 已失效，请重新登录")
 	}
 
 	// 检查用户是否存在且状态正常
@@ -126,6 +138,12 @@ func (s *authService) RefreshToken(refreshToken string) (*dto.LoginResponse, err
 		return nil, bizerrors.ErrUserDisabled
 	}
 
+	// 将旧的 refresh token 加入黑名单（防止重放攻击）
+	if err := s.tokenBlacklist.RevokeToken(ctx, refreshToken); err != nil {
+		// 吊销失败仅记录日志，不影响刷新流程
+		_ = err
+	}
+
 	// 生成新的 token 对
 	tokenPair, err := jwt.GenerateTokenPair(user.ID, user.Username)
 	if err != nil {
@@ -138,6 +156,25 @@ func (s *authService) RefreshToken(refreshToken string) (*dto.LoginResponse, err
 		RefreshToken: tokenPair.RefreshToken,
 		User:         *userResp,
 	}, nil
+}
+
+// Logout 用户登出，将 access token 和 refresh token 加入黑名单
+func (s *authService) Logout(ctx context.Context, accessToken string, refreshToken string) error {
+	// 吊销 access token
+	if accessToken != "" {
+		if err := s.tokenBlacklist.RevokeToken(ctx, accessToken); err != nil {
+			return fmt.Errorf("吊销 access token 失败: %w", err)
+		}
+	}
+
+	// 吊销 refresh token
+	if refreshToken != "" {
+		if err := s.tokenBlacklist.RevokeToken(ctx, refreshToken); err != nil {
+			return fmt.Errorf("吊销 refresh token 失败: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // SendCode 发送验证码

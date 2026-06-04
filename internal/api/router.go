@@ -10,8 +10,9 @@ import (
 
 // Router 路由
 type Router struct {
-	userCtrl *user.Controller
-	authCtrl *auth.Controller
+	userCtrl       *user.Controller
+	authCtrl       *auth.Controller
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewRouter 创建路由
@@ -19,10 +20,12 @@ func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
 	captchaSvc service.CaptchaService,
+	tokenBlacklist service.TokenBlacklistService,
 ) *Router {
 	return &Router{
-		userCtrl: user.NewController(userService),
-		authCtrl: auth.NewController(authService, userService, captchaSvc),
+		userCtrl:       user.NewController(userService, tokenBlacklist),
+		authCtrl:       auth.NewController(authService, userService, captchaSvc),
+		tokenBlacklist: tokenBlacklist,
 	}
 }
 

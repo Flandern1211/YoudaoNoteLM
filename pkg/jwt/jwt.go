@@ -2,11 +2,25 @@ package jwt
 
 import (
 	"YoudaoNoteLm/pkg/config"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// GetParser 获取 JWT Parser（用于解析 token 提取 claims，不做有效性校验）
+func GetParser() *jwt.Parser {
+	return jwt.NewParser()
+}
+
+// generateJTI 生成唯一的 Token ID
+func generateJTI() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 var (
 	ErrTokenInvalid     = errors.New("token 无效")
@@ -30,6 +44,7 @@ func GenerateAccessToken(userID uint, username string) (string, error) {
 		Username:  username,
 		TokenType: AccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        generateJTI(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
@@ -51,6 +66,7 @@ func GenerateRefreshToken(userID uint, username string) (string, error) {
 		Username:  username,
 		TokenType: RefreshToken,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        generateJTI(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),

@@ -10,13 +10,15 @@ import (
 
 // Controller 用户控制器
 type Controller struct {
-	userService service.UserService
+	userService    service.UserService
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewController 创建用户控制器
-func NewController(userService service.UserService) *Controller {
+func NewController(userService service.UserService, tokenBlacklist service.TokenBlacklistService) *Controller {
 	return &Controller{
-		userService: userService,
+		userService:    userService,
+		tokenBlacklist: tokenBlacklist,
 	}
 }
 

@@ -120,11 +120,27 @@ func (ctrl *Controller) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	resp, err := ctrl.authService.RefreshToken(req.RefreshToken)
+	resp, err := ctrl.authService.RefreshToken(c.Request.Context(), req.RefreshToken)
 	if err != nil {
 		response.BizError(c, err)
 		return
 	}
 
 	response.Success(c, resp)
+}
+
+// Logout 用户登出
+func (ctrl *Controller) Logout(c *gin.Context) {
+	var req request.LogoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := ctrl.authService.Logout(c.Request.Context(), req.AccessToken, req.RefreshToken); err != nil {
+		response.BizError(c, err)
+		return
+	}
+
+	response.Success(c, nil)
 }
