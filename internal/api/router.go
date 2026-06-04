@@ -10,18 +10,22 @@ import (
 
 // Router 路由
 type Router struct {
-	userCtrl *user.Controller
-	authCtrl *auth.Controller
+	userCtrl       *user.Controller
+	authCtrl       *auth.Controller
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewRouter 创建路由
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
+	captchaSvc service.CaptchaService,
+	tokenBlacklist service.TokenBlacklistService,
 ) *Router {
 	return &Router{
-		userCtrl: user.NewController(userService),
-		authCtrl: auth.NewController(authService, userService),
+		userCtrl:       user.NewController(userService, tokenBlacklist),
+		authCtrl:       auth.NewController(authService, userService, captchaSvc),
+		tokenBlacklist: tokenBlacklist,
 	}
 }
 
@@ -36,7 +40,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 	engine.GET("/api/v1/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
-			"message": "CloudQue API is running",
+			"message": "YouDaoNoteLM API is running",
 		})
 	})
 

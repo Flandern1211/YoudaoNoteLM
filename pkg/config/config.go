@@ -9,6 +9,7 @@ type Config struct {
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Log      LogConfig      `mapstructure:"log"`
 	CORS     CORSConfig     `mapstructure:"cors"`
+	Email    EmailConfig    `mapstructure:"email"`
 }
 
 // AppConfig 应用配置
@@ -47,8 +48,43 @@ type RedisConfig struct {
 
 // JWTConfig JWT 配置
 type JWTConfig struct {
-	Secret      string        `mapstructure:"secret"`
-	ExpireHours time.Duration `mapstructure:"expire_hours"`
+	Secret          string        `mapstructure:"secret"`
+	ExpireHours     time.Duration `mapstructure:"expire_hours"`
+	AccessTokenExp  string        `mapstructure:"access_token_exp"`
+	RefreshTokenExp string        `mapstructure:"refresh_token_exp"`
+	Issuer          string        `mapstructure:"issuer"`
+}
+
+// GetAccessTokenExp 获取 Access Token 过期时间
+func (c *JWTConfig) GetAccessTokenExp() time.Duration {
+	if c.AccessTokenExp != "" {
+		d, err := time.ParseDuration(c.AccessTokenExp)
+		if err == nil {
+			return d
+		}
+	}
+	// 默认 15 分钟
+	return 15 * time.Minute
+}
+
+// GetRefreshTokenExp 获取 Refresh Token 过期时间
+func (c *JWTConfig) GetRefreshTokenExp() time.Duration {
+	if c.RefreshTokenExp != "" {
+		d, err := time.ParseDuration(c.RefreshTokenExp)
+		if err == nil {
+			return d
+		}
+	}
+	// 默认 7 天
+	return 7 * 24 * time.Hour
+}
+
+// GetIssuer 获取签发者
+func (c *JWTConfig) GetIssuer() string {
+	if c.Issuer != "" {
+		return c.Issuer
+	}
+	return "youdaonotelm"
 }
 
 // LogConfig 日志配置
@@ -70,4 +106,13 @@ type CORSConfig struct {
 	ExposeHeaders    []string `mapstructure:"expose_headers"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 	MaxAge           int      `mapstructure:"max_age"`
+}
+
+// EmailConfig 邮箱配置
+type EmailConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	From     string `mapstructure:"from"` // 发件人地址，默认使用 Username
 }

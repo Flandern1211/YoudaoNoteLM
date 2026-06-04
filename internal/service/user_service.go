@@ -6,6 +6,7 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/pkg/response"
+	"context"
 
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
@@ -13,29 +14,27 @@ import (
 
 // userService 用户服务实现
 type userService struct {
-	userRepo repository.UserRepository
+	userRepo      repository.UserRepository
+	verifyCodeSvc VerifyCodeService
 }
 
 // NewUserService 创建用户服务
-func NewUserService(userRepo repository.UserRepository) UserService {
+func NewUserService(userRepo repository.UserRepository, verifyCodeSvc VerifyCodeService) UserService {
 	return &userService{
-		userRepo: userRepo,
+		userRepo:      userRepo,
+		verifyCodeSvc: verifyCodeSvc,
 	}
 }
 
-// Register 用户注册
-func (s *userService) Register(req *request.RegisterRequest) error {
-	// 检查用户名是否存在
-	exists, err := s.userRepo.ExistsByUsername(req.Username)
-	if err != nil {
+// Register 用户注册（邮箱+验证码）
+func (s *userService) Register(ctx context.Context, req *request.RegisterRequest) error {
+	// 校验验证码
+	if err := s.verifyCodeSvc.Verify(ctx, req.Email, "register", req.Code); err != nil {
 		return err
 	}
-	if exists {
-		return bizerrors.ErrUserAlreadyExists
-	}
 
-	// 检查邮箱是否存在
-	exists, err = s.userRepo.ExistsByEmail(req.Email)
+	// 检查邮箱是否已被注册
+	exists, err := s.userRepo.ExistsByEmail(req.Email)
 	if err != nil {
 		return err
 	}
@@ -49,12 +48,14 @@ func (s *userService) Register(req *request.RegisterRequest) error {
 		return err
 	}
 
+	// 自动生成用户名（邮箱前缀）
+	username := generateUsername(req.Email)
+
 	// 创建用户
 	user := &entity.User{
-		Username: req.Username,
+		Username: username,
 		Password: string(hashedPassword),
 		Email:    req.Email,
-		Nickname: req.Nickname,
 		Status:   1, // 默认正常
 	}
 
@@ -63,6 +64,16 @@ func (s *userService) Register(req *request.RegisterRequest) error {
 	}
 
 	return nil
+}
+
+// generateUsername 从邮箱生成用户名
+func generateUsername(email string) string {
+	for i, c := range email {
+		if c == '@' {
+			return email[:i]
+		}
+	}
+	return email
 }
 
 // GetUserByID 根据 ID 获取用户
