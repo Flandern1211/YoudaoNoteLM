@@ -43,6 +43,20 @@ const (
 	CodeResourceNotFound      = 3001
 	CodeResourceAlreadyExists = 3002
 	CodeResourceLocked        = 3003
+
+	// 导入模块错误码 4xxxx
+	CodeUnsupportedFormat     = 40001
+	CodeFileTooLarge          = 40002
+	CodeFileParseFailed       = 40003
+	CodeWebScrapeFailed       = 40004
+	CodeASTranscriptionFailed = 40005
+	CodeSearchQuotaExhausted  = 40006
+	CodeInvalidYoudaoAPIKey   = 40007
+	CodeDuplicateImport       = 40008
+	CodePreviewExpired        = 40009
+
+	// 服务器错误 5xxxx
+	CodeInternalServiceError = 50001
 )
 
 // 错误码对应的文本消息
@@ -75,6 +89,17 @@ var codeMessages = map[int]string{
 	CodeResourceNotFound:      "资源不存在",
 	CodeResourceAlreadyExists: "资源已存在",
 	CodeResourceLocked:        "资源已被锁定",
+
+	CodeUnsupportedFormat:      "不支持的文件格式",
+	CodeFileTooLarge:           "文件大小超限",
+	CodeFileParseFailed:        "文件解析失败",
+	CodeWebScrapeFailed:        "网页抓取失败",
+	CodeASTranscriptionFailed:  "音频转写失败",
+	CodeSearchQuotaExhausted:   "搜索API配额耗尽",
+	CodeInvalidYoudaoAPIKey:    "有道API Key无效",
+	CodeDuplicateImport:        "重复导入",
+	CodePreviewExpired:         "预览已过期",
+	CodeInternalServiceError:   "内部服务错误",
 }
 
 // GetMessage 获取错误码对应的文本消息

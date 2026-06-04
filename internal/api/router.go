@@ -2,6 +2,7 @@ package api
 
 import (
 	"YoudaoNoteLm/internal/api/v1/auth"
+	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/service"
@@ -13,12 +14,14 @@ type Router struct {
 	userCtrl       *user.Controller
 	authCtrl       *auth.Controller
 	tokenBlacklist service.TokenBlacklistService
+	sourceCtrl  *source.Controller
 }
 
 // NewRouter 创建路由
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
+	sourceService service.SourceService,
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
 ) *Router {
@@ -26,6 +29,7 @@ func NewRouter(
 		userCtrl:       user.NewController(userService, tokenBlacklist),
 		authCtrl:       auth.NewController(authService, userService, captchaSvc),
 		tokenBlacklist: tokenBlacklist,
+		sourceCtrl: source.NewController(sourceService),
 	}
 }
 
@@ -52,5 +56,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 用户路由
 		r.userCtrl.RegisterRoutes(v1)
+
+		// 资料来源路由（需认证）
+		r.sourceCtrl.RegisterRoutes(v1)
 	}
 }
