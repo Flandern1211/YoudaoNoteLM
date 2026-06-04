@@ -6,12 +6,14 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/pkg/jwt"
+	"YoudaoNoteLm/pkg/logger"
 	"context"
 	"fmt"
 	"time"
 
 	bizerrors "YoudaoNoteLm/pkg/errors"
 
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -75,7 +77,9 @@ func (s *authService) Login(ctx context.Context, req *request.LoginRequest) (*dt
 
 	// 登录成功，重置失败次数
 	if user.FailedAttempts > 0 || user.LockedUntil != nil {
-		_ = s.userRepo.ResetLoginAttempts(user.ID)
+		if err := s.userRepo.ResetLoginAttempts(user.ID); err != nil {
+			logger.Error("重置登录失败次数失败", zap.Uint("user_id", user.ID), zap.Error(err))
+		}
 	}
 
 	// 生成双 Token
@@ -99,9 +103,13 @@ func (s *authService) handleLoginFailure(user *entity.User) {
 	if attempts >= maxLoginAttempts {
 		// 锁定账户 15 分钟
 		lockUntil := time.Now().Add(lockDuration)
-		_ = s.userRepo.LockUser(user.ID, lockUntil)
+		if err := s.userRepo.LockUser(user.ID, lockUntil); err != nil {
+			logger.Error("锁定用户失败", zap.Uint("user_id", user.ID), zap.Error(err))
+		}
 	} else {
-		_ = s.userRepo.UpdateLoginAttempts(user.ID, attempts)
+		if err := s.userRepo.UpdateLoginAttempts(user.ID, attempts); err != nil {
+			logger.Error("更新登录失败次数失败", zap.Uint("user_id", user.ID), zap.Error(err))
+		}
 	}
 }
 
@@ -140,8 +148,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 
 	// 将旧的 refresh token 加入黑名单（防止重放攻击）
 	if err := s.tokenBlacklist.RevokeToken(ctx, refreshToken); err != nil {
-		// 吊销失败仅记录日志，不影响刷新流程
-		_ = err
+		logger.Error("吊销旧 refresh token 失败", zap.Uint("user_id", user.ID), zap.Error(err))
 	}
 
 	// 生成新的 token 对
@@ -207,7 +214,12 @@ func (s *authService) SendCode(ctx context.Context, req *request.SendCodeRequest
 	}
 
 	// 获取冷却时间
-	remaining, _ := s.verifyCodeSvc.GetCooldownRemaining(ctx, req.Email, req.Type)
+	remaining, err := s.verifyCodeSvc.GetCooldownRemaining(ctx, req.Email, req.Type)
+	if err != nil {
+		logger.Error("获取冷却时间失败", zap.String("email", req.Email), zap.Error(err))
+		// 获取冷却时间失败不影响发送验证码，设置为 0
+		remaining = 0
+	}
 
 	return &dto.SendCodeResponse{
 		RetryAfter: remaining,
