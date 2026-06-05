@@ -7,11 +7,11 @@ import (
 
 // SourceService 资料来源服务接口
 type SourceService interface {
-	List(userID, notebookID uint, keyword string, page, size int) ([]*response.SourceResponse, int64, error)
-	GetByID(id uint) (*entity.Source, error)
-	Rename(id uint, name string) error
-	Delete(id uint) error
-	BatchDelete(ids []uint) error
-	GetContent(id uint) (string, error)
-	GetOriginalContent(id uint) (content string, contentType string, err error)
+	List(userID, notebookID int, keyword string, page, size int) ([]*response.SourceResponse, int64, error)
+	GetByID(id int) (*entity.Source, error)
+	Rename(id int, name string) error
+	Delete(id int) error
+	BatchDelete(ids []int) error
+	GetContent(id int) (string, error)
+	GetOriginalContent(id int) (content string, contentType string, err error)
 }

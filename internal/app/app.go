@@ -105,6 +105,10 @@ func (a *App) initDatabase() error {
 	logger.Info("开始数据库迁移...")
 	if err := a.mysqlDB.AutoMigrate(
 		&entity.User{},
+		&entity.Notebook{},
+		&entity.Conversation{},
+		&entity.Message{},
+		&entity.ParentBlock{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {

@@ -19,7 +19,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 }
 
 // FindByID 根据 ID 查找用户
-func (r *userRepository) FindByID(id uint) (*entity.User, error) {
+func (r *userRepository) FindByID(id int) (*entity.User, error) {
 	var user entity.User
 	err := r.db.First(&user, id).Error
 	if err != nil {
@@ -68,7 +68,7 @@ func (r *userRepository) Update(user *entity.User) error {
 }
 
 // Delete 删除用户
-func (r *userRepository) Delete(id uint) error {
+func (r *userRepository) Delete(id int) error {
 	return r.db.Delete(&entity.User{}, id).Error
 }
 
@@ -106,12 +106,12 @@ func (r *userRepository) ExistsByEmail(email string) (bool, error) {
 }
 
 // UpdateLoginAttempts 更新登录失败次数
-func (r *userRepository) UpdateLoginAttempts(id uint, attempts int) error {
+func (r *userRepository) UpdateLoginAttempts(id int, attempts int) error {
 	return r.db.Model(&entity.User{}).Where("id = ?", id).Update("failed_attempts", attempts).Error
 }
 
 // LockUser 锁定用户到指定时间
-func (r *userRepository) LockUser(id uint, until time.Time) error {
+func (r *userRepository) LockUser(id int, until time.Time) error {
 	return r.db.Model(&entity.User{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"failed_attempts": 0,
 		"locked_until":    until,
@@ -119,7 +119,7 @@ func (r *userRepository) LockUser(id uint, until time.Time) error {
 }
 
 // ResetLoginAttempts 重置登录失败次数
-func (r *userRepository) ResetLoginAttempts(id uint) error {
+func (r *userRepository) ResetLoginAttempts(id int) error {
 	return r.db.Model(&entity.User{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"failed_attempts": 0,
 		"locked_until":    nil,

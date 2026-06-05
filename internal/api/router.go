@@ -40,6 +40,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 	engine.Use(middleware.Logger())
 	engine.Use(middleware.CORS())
 
+	// 静态文件服务（头像等）
+	engine.Static("/uploads", "./uploads")
+
 	// 健康检查
 	engine.GET("/api/v1/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
