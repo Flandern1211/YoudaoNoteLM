@@ -50,6 +50,9 @@ external:
     access_key: "minioadmin"           # MinIO Access Key
     secret_key: "minioadmin"           # MinIO Secret Key
     bucket: "youdaonotelm"             # MinIO Bucket 名称
+  search:
+    provider: "bing"                   # bing / duckduckgo
+    api_key: "your_bing_api_key"       # Bing API Key（必填，否则降级到 DuckDuckGo）
 
 # 日志配置
 log:
