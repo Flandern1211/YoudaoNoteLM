@@ -8,7 +8,6 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external"
-	"YoudaoNoteLm/pkg/cache"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
 
@@ -35,14 +34,14 @@ type ConfigService interface {
 type configService struct {
 	sysConfigRepo  repository.SysConfigRepository
 	userConfigRepo repository.UserConfigRepository
-	cache          *cache.Cache
+	cache          CacheStore
 	storage        external.FileStorage // ASR 需要注入存储服务
 }
 
 func NewConfigService(
 	sysConfigRepo repository.SysConfigRepository,
 	userConfigRepo repository.UserConfigRepository,
-	cache *cache.Cache,
+	cache CacheStore,
 	storage external.FileStorage,
 ) ConfigService {
 	return &configService{
@@ -122,6 +121,9 @@ func (s *configService) GetASRService(userID uint) (external.ASRService, error) 
 	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
 		logger.Debug("用户ASR配置缓存命中", zap.Uint("user_id", userID))
 		svc := external.NewASRServiceFromDB(userCfg.Provider, userCfg.APIURL, userCfg.APIKey, userCfg.ExtraConfig)
+		if svc == nil {
+			return nil, bizerrors.New(bizerrors.CodeASTranscriptionFailed, "不支持的ASR服务商: "+userCfg.Provider)
+		}
 		s.injectStorage(svc)
 		return svc, nil
 	}
@@ -131,6 +133,9 @@ func (s *configService) GetASRService(userID uint) (external.ASRService, error) 
 	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
 		_ = s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL)
 		svc := external.NewASRServiceFromDB(userCfgPtr.Provider, userCfgPtr.APIURL, userCfgPtr.APIKey, userCfgPtr.ExtraConfig)
+		if svc == nil {
+			return nil, bizerrors.New(bizerrors.CodeASTranscriptionFailed, "不支持的ASR服务商: "+userCfgPtr.Provider)
+		}
 		s.injectStorage(svc)
 		return svc, nil
 	}
