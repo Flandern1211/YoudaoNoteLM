@@ -36,14 +36,12 @@ func NewSearchAgent(
 	}
 }
 
-// AgentResult Agent 执行结果
-type AgentResult struct {
-	Content      string `json:"content"`
-	SearchRounds int    `json:"search_rounds"`
-}
-
 // Execute 执行搜索任务（协调者调用入口）
-func (a *SearchAgent) Execute(ctx context.Context, task string) (*AgentResult, error) {
+// 返回 service.SearchAgentResult 以实现 service.SearchAgentInterface
+func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task string) (*service.SearchAgentResult, error) {
+	// 注入 userID 和 notebookID 到 context
+	ctx = WithUserID(ctx, userID)
+	ctx = WithNotebookID(ctx, notebookID)
 	tools := []Tool{
 		NewWebSearchTool(a.configService),
 		NewAnalyzeResultsTool(a.llmClient),
@@ -80,7 +78,7 @@ func (a *SearchAgent) Execute(ctx context.Context, task string) (*AgentResult, e
 
 		// 如果没有工具调用，Agent 结束
 		if len(resp.ToolCalls) == 0 {
-			return &AgentResult{
+			return &service.SearchAgentResult{
 				Content:      resp.Content,
 				SearchRounds: searchRounds,
 			}, nil
@@ -135,7 +133,7 @@ func (a *SearchAgent) Execute(ctx context.Context, task string) (*AgentResult, e
 		return nil, bizerrors.NewWithErr(bizerrors.CodeLLMCallFailed, "最终回复生成失败", err)
 	}
 
-	return &AgentResult{
+	return &service.SearchAgentResult{
 		Content:      finalResp,
 		SearchRounds: searchRounds,
 	}, nil
