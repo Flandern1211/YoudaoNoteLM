@@ -29,7 +29,7 @@ type LoginRequest struct {
 // SendCodeRequest 发送验证码请求
 type SendCodeRequest struct {
 	Email string `json:"email" binding:"required,email"`
-	Type  string `json:"type" binding:"required,oneof=register reset"` // register=注册, reset=重置密码
+	Type  string `json:"type" binding:"required,oneof=register reset delete_account"` // register=注册, reset=重置密码, delete_account=注销账号
 }
 
 // ResetPasswordRequest 重置密码请求

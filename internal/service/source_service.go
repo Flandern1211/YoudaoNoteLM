@@ -15,7 +15,7 @@ func NewSourceService(sourceRepo repository.SourceRepository) SourceService {
 	return &sourceService{sourceRepo: sourceRepo}
 }
 
-func (s *sourceService) List(userID, notebookID int, keyword string, page, size int) ([]*response.SourceResponse, int64, error) {
+func (s *sourceService) List(userID, notebookID uint, keyword string, page, size int) ([]*response.SourceResponse, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -40,7 +40,7 @@ func (s *sourceService) List(userID, notebookID int, keyword string, page, size 
 	return list, total, nil
 }
 
-func (s *sourceService) GetByID(id int) (*entity.Source, error) {
+func (s *sourceService) GetByID(id uint) (*entity.Source, error) {
 	source, err := s.sourceRepo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (s *sourceService) GetByID(id int) (*entity.Source, error) {
 	return source, nil
 }
 
-func (s *sourceService) Rename(id int, name string) error {
+func (s *sourceService) Rename(id uint, name string) error {
 	source, err := s.GetByID(id)
 	if err != nil {
 		return err
@@ -60,7 +60,7 @@ func (s *sourceService) Rename(id int, name string) error {
 	return s.sourceRepo.Update(source)
 }
 
-func (s *sourceService) Delete(id int) error {
+func (s *sourceService) Delete(id uint) error {
 	_, err := s.GetByID(id)
 	if err != nil {
 		return err
@@ -68,11 +68,11 @@ func (s *sourceService) Delete(id int) error {
 	return s.sourceRepo.Delete(id)
 }
 
-func (s *sourceService) BatchDelete(ids []int) error {
+func (s *sourceService) BatchDelete(ids []uint) error {
 	return s.sourceRepo.BatchDelete(ids)
 }
 
-func (s *sourceService) GetContent(id int) (string, error) {
+func (s *sourceService) GetContent(id uint) (string, error) {
 	source, err := s.GetByID(id)
 	if err != nil {
 		return "", err
@@ -80,7 +80,7 @@ func (s *sourceService) GetContent(id int) (string, error) {
 	return source.MarkdownContent, nil
 }
 
-func (s *sourceService) GetOriginalContent(id int) (string, string, error) {
+func (s *sourceService) GetOriginalContent(id uint) (string, string, error) {
 	source, err := s.GetByID(id)
 	if err != nil {
 		return "", "", err

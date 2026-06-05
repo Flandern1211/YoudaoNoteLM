@@ -3,7 +3,7 @@ package entity
 // Conversation 会话实体
 type Conversation struct {
 	BaseEntity
-	NotebookID int      `gorm:"index;not null;comment:所属笔记本ID"`
+	NotebookID uint     `gorm:"index;not null;comment:所属笔记本ID"`
 	Notebook   Notebook `gorm:"foreignKey:NotebookID;constraint:OnDelete:CASCADE"`
 	Title      string   `gorm:"type:varchar(100);not null;comment:会话标题"`
 

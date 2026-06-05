@@ -3,7 +3,8 @@ package entity
 // UserLLMConfig 主模型配置（一人多条）
 type UserLLMConfig struct {
 	BaseEntity
-	UserID   int    `gorm:"not null;index" json:"user_id"`             // 所属用户
+	UserID   uint   `gorm:"not null;index" json:"user_id"` // 所属用户
+	User     User   `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Name     string `gorm:"type:varchar(100);not null" json:"name"`    // 配置名称
 	Provider string `gorm:"type:varchar(50);not null" json:"provider"` // 服务商: openai/anthropic/deepseek
 	APIKey   string `gorm:"type:varchar(512)" json:"api_key"`          // API密钥

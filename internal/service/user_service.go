@@ -84,7 +84,7 @@ func generateUsername(email string) string {
 }
 
 // GetUserByID 根据 ID 获取用户
-func (s *userService) GetUserByID(id int) (*entity.User, error) {
+func (s *userService) GetUserByID(id uint) (*entity.User, error) {
 	user, err := s.userRepo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (s *userService) GetUserByID(id int) (*entity.User, error) {
 }
 
 // UpdateUser 更新用户信息
-func (s *userService) UpdateUser(id int, req *request.UpdateUserRequest) error {
+func (s *userService) UpdateUser(id uint, req *request.UpdateUserRequest) error {
 	user, err := s.GetUserByID(id)
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (s *userService) UpdateUser(id int, req *request.UpdateUserRequest) error {
 }
 
 // UpdateUsername 修改用户名
-func (s *userService) UpdateUsername(id int, req *request.UpdateUsernameRequest) error {
+func (s *userService) UpdateUsername(id uint, req *request.UpdateUsernameRequest) error {
 	user, err := s.GetUserByID(id)
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func (s *userService) UpdateUsername(id int, req *request.UpdateUsernameRequest)
 }
 
 // UploadAvatar 上传头像
-func (s *userService) UploadAvatar(id int, file *multipart.FileHeader) (string, error) {
+func (s *userService) UploadAvatar(id uint, file *multipart.FileHeader) (string, error) {
 	// 验证文件大小（2MB）
 	if file.Size > 2*1024*1024 {
 		return "", bizerrors.New(bizerrors.CodeBadRequest, "头像文件大小不能超过 2MB")
@@ -205,7 +205,7 @@ func (s *userService) UploadAvatar(id int, file *multipart.FileHeader) (string, 
 }
 
 // ChangePassword 修改密码
-func (s *userService) ChangePassword(id int, req *request.ChangePasswordRequest) error {
+func (s *userService) ChangePassword(id uint, req *request.ChangePasswordRequest) error {
 	user, err := s.GetUserByID(id)
 	if err != nil {
 		return err
@@ -224,6 +224,36 @@ func (s *userService) ChangePassword(id int, req *request.ChangePasswordRequest)
 
 	user.Password = string(hashedPassword)
 	return s.userRepo.Update(user)
+}
+
+// DeleteAccount 注销用户（硬删除）
+func (s *userService) DeleteAccount(id uint, req *request.DeleteAccountRequest) error {
+	user, err := s.GetUserByID(id)
+	if err != nil {
+		return err
+	}
+
+	// 验证密码
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		return bizerrors.ErrInvalidCredentials
+	}
+
+	// 验证邮箱验证码
+	ctx := context.Background()
+	if err := s.verifyCodeSvc.Verify(ctx, user.Email, "delete_account", req.Code); err != nil {
+		return err
+	}
+
+	// 删除头像文件
+	if user.Avatar != "" {
+		avatarPath := "." + user.Avatar
+		if err := os.Remove(avatarPath); err != nil && !os.IsNotExist(err) {
+			logger.Warn("删除头像文件失败", zap.String("path", avatarPath), zap.Error(err))
+		}
+	}
+
+	// 硬删除用户（级联删除所有关联数据）
+	return s.userRepo.HardDelete(id)
 }
 
 // GetUserResponse 获取用户响应

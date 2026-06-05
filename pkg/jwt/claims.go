@@ -12,14 +12,14 @@ const (
 
 // CustomClaims 自定义 JWT Claims
 type CustomClaims struct {
-	UserID    int       `json:"user_id"`
+	UserID    uint      `json:"user_id"`
 	Username  string    `json:"username"`
 	TokenType TokenType `json:"token_type"`
 	jwt.RegisteredClaims
 }
 
 // GetUserID 获取用户 ID
-func (c *CustomClaims) GetUserID() int {
+func (c *CustomClaims) GetUserID() uint {
 	return c.UserID
 }
 
