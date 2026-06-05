@@ -1,0 +1,319 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"mime/multipart"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"YoudaoNoteLm/internal/model/entity"
+	"YoudaoNoteLm/internal/repository"
+	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/pkg/cache"
+	bizerrors "YoudaoNoteLm/pkg/errors"
+	"YoudaoNoteLm/pkg/logger"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+)
+
+var allowedFileTypes = map[string]bool{
+	".txt": true, ".md": true, ".docx": true, ".pdf": true, ".pptx": true,
+}
+
+var allowedAudioTypes = map[string]bool{
+	".mp3": true, ".wav": true,
+}
+
+const maxFileSize int64 = 30 << 20   // 30MB
+const maxAudioSize int64 = 300 << 20 // 300MB
+
+type importerService struct {
+	markitdown   external.MarkitdownClient
+	asr          external.ASRService
+	storage      external.FileStorage
+	sourceRepo   repository.SourceRepository
+	importCache  *cache.ImportTaskCache
+	previewCache *cache.AudioPreviewCache
+	embedding    EmbeddingService
+}
+
+// NewImporterService 创建导入服务
+func NewImporterService(
+	markitdown external.MarkitdownClient,
+	asr external.ASRService,
+	storage external.FileStorage,
+	sourceRepo repository.SourceRepository,
+	importCache *cache.ImportTaskCache,
+	previewCache *cache.AudioPreviewCache,
+	embedding EmbeddingService,
+) ImporterService {
+	return &importerService{
+		markitdown:   markitdown,
+		asr:          asr,
+		storage:      storage,
+		sourceRepo:   sourceRepo,
+		importCache:  importCache,
+		previewCache: previewCache,
+		embedding:    embedding,
+	}
+}
+
+// ImportFile 文件上传导入
+func (s *importerService) ImportFile(userID, notebookID uint, file *multipart.FileHeader) (*entity.Source, error) {
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if !allowedFileTypes[ext] {
+		return nil, bizerrors.ErrUnsupportedFormat
+	}
+	if file.Size > maxFileSize {
+		return nil, bizerrors.ErrFileTooLarge
+	}
+
+	filePath, err := s.storage.Upload(file)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "文件上传失败", err)
+	}
+
+	markdown, err := s.markitdown.Convert(filePath)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeFileParseFailed, "文件解析失败", err)
+	}
+
+	source := &entity.Source{
+		UserID:          userID,
+		NotebookID:      notebookID,
+		Name:            file.Filename,
+		Type:            "file",
+		FilePath:        filePath,
+		FileSize:        file.Size,
+		MimeType:        file.Header.Get("Content-Type"),
+		MarkdownContent: markdown,
+		Status:          "ready",
+	}
+
+	if err := s.sourceRepo.Create(source); err != nil {
+		return nil, err
+	}
+
+	// 异步向量化
+	if s.embedding != nil {
+		go func() {
+			if err := s.embedding.Vectorize(source.ID, markdown); err != nil {
+				logger.Warn("向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
+			} else {
+				_ = s.sourceRepo.SetVectorized(source.ID)
+			}
+		}()
+	}
+
+	return source, nil
+}
+
+// PreviewAudio 音频上传转写预览
+func (s *importerService) PreviewAudio(userID, notebookID uint, file *multipart.FileHeader) (string, string, string, error) {
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if !allowedAudioTypes[ext] {
+		return "", "", "", bizerrors.ErrUnsupportedFormat
+	}
+	if file.Size > maxAudioSize {
+		return "", "", "", bizerrors.ErrFileTooLarge
+	}
+
+	filePath, err := s.storage.Upload(file)
+	if err != nil {
+		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "音频上传失败", err)
+	}
+
+	text, err := s.asr.Transcribe(filePath)
+	if err != nil {
+		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeASTranscriptionFailed, "音频转写失败", err)
+	}
+
+	previewID := uuid.New().String()
+	preview := &cache.AudioPreview{
+		PreviewID:       previewID,
+		UserID:          userID,
+		NotebookID:      notebookID,
+		FileName:        file.Filename,
+		FilePath:        filePath,
+		FileSize:        file.Size,
+		TranscribedText: text,
+		Status:          "pending",
+		ExpiresAt:       time.Now().Add(30 * time.Minute).Unix(),
+	}
+
+	ctx := context.Background()
+	if err := s.previewCache.Save(ctx, preview); err != nil {
+		return "", "", "", err
+	}
+
+	return previewID, text, file.Filename, nil
+}
+
+// ConfirmAudio 确认音频导入
+func (s *importerService) ConfirmAudio(userID uint, previewID string, editedContent *string) (*entity.Source, error) {
+	ctx := context.Background()
+	preview, err := s.previewCache.Get(ctx, previewID)
+	if err != nil {
+		return nil, bizerrors.ErrNotFound
+	}
+	if preview == nil {
+		return nil, bizerrors.ErrNotFound
+	}
+	if preview.UserID != userID {
+		return nil, bizerrors.ErrForbidden
+	}
+	if time.Now().Unix() > preview.ExpiresAt {
+		return nil, bizerrors.ErrPreviewExpired
+	}
+
+	content := preview.TranscribedText
+	if editedContent != nil && *editedContent != "" {
+		content = *editedContent
+	}
+
+	source := &entity.Source{
+		UserID:          userID,
+		NotebookID:      preview.NotebookID,
+		Name:            preview.FileName,
+		Type:            "audio",
+		FilePath:        preview.FilePath,
+		FileSize:        preview.FileSize,
+		MarkdownContent: content,
+		Status:          "ready",
+	}
+
+	if err := s.sourceRepo.Create(source); err != nil {
+		return nil, err
+	}
+
+	_ = s.previewCache.UpdateStatus(ctx, previewID, "confirmed")
+
+	// 异步向量化
+	if s.embedding != nil {
+		go func() {
+			if err := s.embedding.Vectorize(source.ID, content); err != nil {
+				logger.Warn("音频向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
+			} else {
+				_ = s.sourceRepo.SetVectorized(source.ID)
+			}
+		}()
+	}
+
+	return source, nil
+}
+
+// ImportSearchResults 批量导入搜索结果
+func (s *importerService) ImportSearchResults(userID, notebookID uint, urls []string) (string, error) {
+	taskID := uuid.New().String()
+	task := &cache.ImportTask{
+		TaskID:     taskID,
+		UserID:     userID,
+		NotebookID: notebookID,
+		TaskType:   "search",
+		TotalCount: len(urls),
+		Status:     "running",
+		CreatedAt:  time.Now().Unix(),
+	}
+
+	ctx := context.Background()
+	if err := s.importCache.Save(ctx, task); err != nil {
+		return "", err
+	}
+
+	go s.processURLs(taskID, userID, notebookID, urls)
+	return taskID, nil
+}
+
+// processURLs 异步处理 URL 列表
+func (s *importerService) processURLs(taskID string, userID, notebookID uint, urls []string) {
+	ctx := context.Background()
+	for _, url := range urls {
+		markdown, err := s.markitdown.ConvertFromURL(url)
+		if err != nil {
+			logger.Warn("URL转换失败", zap.String("url", url), zap.Error(err))
+			s.incrementTaskFail(ctx, taskID, fmt.Sprintf("%s: %v", url, err))
+			continue
+		}
+
+		source := &entity.Source{
+			UserID:          userID,
+			NotebookID:      notebookID,
+			Name:            url,
+			Type:            "url",
+			OriginalURL:     url,
+			MarkdownContent: markdown,
+			Status:          "ready",
+		}
+		if err := s.sourceRepo.Create(source); err != nil {
+			s.incrementTaskFail(ctx, taskID, fmt.Sprintf("%s: %v", url, err))
+			continue
+		}
+
+		// 异步向量化
+		if s.embedding != nil {
+			go func(srcID uint, content string) {
+				if err := s.embedding.Vectorize(srcID, content); err != nil {
+					logger.Warn("向量化失败", zap.Uint("source_id", srcID), zap.Error(err))
+				} else {
+					_ = s.sourceRepo.SetVectorized(srcID)
+				}
+			}(source.ID, markdown)
+		}
+
+		s.incrementTaskSuccess(ctx, taskID)
+	}
+
+	// 更新任务最终状态
+	task, _ := s.importCache.Get(ctx, taskID)
+	if task != nil {
+		if task.FailCount > 0 && task.SuccessCount > 0 {
+			task.Status = "partial_failed"
+		} else if task.FailCount > 0 {
+			task.Status = "failed"
+		} else {
+			task.Status = "completed"
+		}
+		_ = s.importCache.Save(ctx, task)
+	}
+}
+
+// incrementTaskFail 增加失败计数
+func (s *importerService) incrementTaskFail(ctx context.Context, taskID string, errMsg string) {
+	task, err := s.importCache.Get(ctx, taskID)
+	if err != nil || task == nil {
+		return
+	}
+	task.FailCount++
+	if task.ErrorDetail != "" {
+		task.ErrorDetail = task.ErrorDetail + "|" + errMsg
+	} else {
+		task.ErrorDetail = errMsg
+	}
+	_ = s.importCache.Save(ctx, task)
+}
+
+// incrementTaskSuccess 增加成功计数
+func (s *importerService) incrementTaskSuccess(ctx context.Context, taskID string) {
+	task, err := s.importCache.Get(ctx, taskID)
+	if err != nil || task == nil {
+		return
+	}
+	task.SuccessCount++
+	_ = s.importCache.Save(ctx, task)
+}
+
+// GetImportTask 获取导入任务状态
+func (s *importerService) GetImportTask(taskID string) (interface{}, error) {
+	ctx := context.Background()
+	task, err := s.importCache.Get(ctx, taskID)
+	if err != nil {
+		return nil, bizerrors.ErrNotFound
+	}
+	if task == nil {
+		return nil, bizerrors.ErrNotFound
+	}
+	return task, nil
+}
