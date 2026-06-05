@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -83,28 +84,9 @@ func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, err
 		return external.NewCustomEngine(userCfgPtr.Name, userCfgPtr.APIURL, userCfgPtr.APIKey), nil
 	}
 
-	// 2. 降级到系统内置配置（先查缓存）
-	sysCacheKey := sysConfigCacheKey("search")
-	var builtins []*entity.SysConfig
-	if err := s.cache.Get(ctx, sysCacheKey, &builtins); err == nil {
-		for _, builtin := range builtins {
-			if builtin.Enabled {
-				logger.Info("使用系统内置搜索配置（缓存）", zap.String("key", builtin.ConfigKey))
-				break
-			}
-		}
-	} else {
-		// 缓存未命中，查 DB
-		builtins, err = s.sysConfigRepo.FindByGroup("search")
-		if err == nil {
-			_ = s.cache.Set(ctx, sysCacheKey, builtins, sysConfigTTL)
-			for _, builtin := range builtins {
-				if builtin.Enabled {
-					logger.Info("使用系统内置搜索配置", zap.String("key", builtin.ConfigKey))
-					break
-				}
-			}
-		}
+	// 2. 降级到系统内置配置
+	if engine := s.getSysSearchEngine(ctx); engine != nil {
+		return engine, nil
 	}
 
 	// 3. DuckDuckGo 兜底
@@ -141,20 +123,8 @@ func (s *configService) GetASRService(userID uint) (external.ASRService, error) 
 	}
 
 	// 2. 降级到系统内置配置
-	sysCacheKey := sysConfigCacheKey("asr")
-	var builtins []*entity.SysConfig
-	if err := s.cache.Get(ctx, sysCacheKey, &builtins); err == nil {
-		for _, builtin := range builtins {
-			if builtin.Enabled {
-				logger.Info("使用系统内置ASR配置（缓存）", zap.String("key", builtin.ConfigKey))
-				break
-			}
-		}
-	} else {
-		builtins, err = s.sysConfigRepo.FindByGroup("asr")
-		if err == nil {
-			_ = s.cache.Set(ctx, sysCacheKey, builtins, sysConfigTTL)
-		}
+	if svc := s.getSysASRService(ctx); svc != nil {
+		return svc, nil
 	}
 
 	// 3. 无可用配置
@@ -183,20 +153,8 @@ func (s *configService) GetEmbeddingService(userID uint) (external.EmbeddingServ
 	}
 
 	// 2. 降级到系统内置配置
-	sysCacheKey := sysConfigCacheKey("embedding")
-	var builtins []*entity.SysConfig
-	if err := s.cache.Get(ctx, sysCacheKey, &builtins); err == nil {
-		for _, builtin := range builtins {
-			if builtin.Enabled {
-				logger.Info("使用系统内置Embedding配置（缓存）", zap.String("key", builtin.ConfigKey))
-				break
-			}
-		}
-	} else {
-		builtins, err = s.sysConfigRepo.FindByGroup("embedding")
-		if err == nil {
-			_ = s.cache.Set(ctx, sysCacheKey, builtins, sysConfigTTL)
-		}
+	if svc := s.getSysEmbeddingService(ctx); svc != nil {
+		return svc, nil
 	}
 
 	// 3. 无可用配置
@@ -251,4 +209,118 @@ func (s *configService) injectStorage(svc external.ASRService) {
 	if setter, ok := svc.(interface{ SetStorage(external.FileStorage) }); ok {
 		setter.SetStorage(s.storage)
 	}
+}
+
+// --- 系统配置解析 ---
+
+// sysConfigParams sys_config.config_value 解析后的参数
+type sysConfigParams struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	APIURL   string `json:"api_url"`
+	APIKey   string `json:"api_key"`
+}
+
+// getSysSearchEngine 从 sys_config 查找并创建搜索引擎
+func (s *configService) getSysSearchEngine(ctx context.Context) external.SearchEngine {
+	sysCacheKey := sysConfigCacheKey("search")
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "search")
+	if err != nil {
+		return nil
+	}
+
+	for _, builtin := range builtins {
+		if !builtin.Enabled {
+			continue
+		}
+		var params sysConfigParams
+		if err := json.Unmarshal([]byte(builtin.ConfigValue), &params); err != nil {
+			logger.Error("解析系统搜索配置失败", zap.String("key", builtin.ConfigKey), zap.Error(err))
+			continue
+		}
+		if params.APIURL == "" {
+			continue
+		}
+		name := params.Name
+		if name == "" {
+			name = builtin.ConfigKey
+		}
+		logger.Info("使用系统内置搜索配置", zap.String("key", builtin.ConfigKey))
+		return external.NewCustomEngine(name, params.APIURL, params.APIKey)
+	}
+	return nil
+}
+
+// getSysASRService 从 sys_config 查找并创建 ASR 服务
+func (s *configService) getSysASRService(ctx context.Context) external.ASRService {
+	sysCacheKey := sysConfigCacheKey("asr")
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "asr")
+	if err != nil {
+		return nil
+	}
+
+	for _, builtin := range builtins {
+		if !builtin.Enabled {
+			continue
+		}
+		var params map[string]interface{}
+		if err := json.Unmarshal([]byte(builtin.ConfigValue), &params); err != nil {
+			logger.Error("解析系统ASR配置失败", zap.String("key", builtin.ConfigKey), zap.Error(err))
+			continue
+		}
+		getStr := func(key string) string {
+			if v, ok := params[key].(string); ok {
+				return v
+			}
+			return ""
+		}
+		provider := getStr("provider")
+		apiKey := getStr("api_key")
+		extra, _ := json.Marshal(params) // 整个 JSON 作为 extraConfig
+		svc := external.NewASRServiceFromDB(provider, "", apiKey, string(extra))
+		if svc == nil {
+			continue
+		}
+		s.injectStorage(svc)
+		logger.Info("使用系统内置ASR配置", zap.String("key", builtin.ConfigKey))
+		return svc
+	}
+	return nil
+}
+
+// getSysEmbeddingService 从 sys_config 查找并创建 Embedding 服务
+func (s *configService) getSysEmbeddingService(ctx context.Context) external.EmbeddingService {
+	sysCacheKey := sysConfigCacheKey("embedding")
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "embedding")
+	if err != nil {
+		return nil
+	}
+
+	for _, builtin := range builtins {
+		if !builtin.Enabled {
+			continue
+		}
+		// TODO: 后续实现 EmbeddingService provider 时解析 config_value 创建服务
+		logger.Info("发现系统内置Embedding配置（暂未实现）", zap.String("key", builtin.ConfigKey))
+	}
+	return nil
+}
+
+// getSysConfigs 获取系统配置（带缓存）
+func (s *configService) getSysConfigs(ctx context.Context, cacheKey, group string) ([]*entity.SysConfig, error) {
+	var builtins []*entity.SysConfig
+	if err := s.cache.Get(ctx, cacheKey, &builtins); err == nil {
+		return builtins, nil
+	}
+
+	builtins, err := s.sysConfigRepo.FindByGroup(group)
+	if err != nil {
+		return nil, err
+	}
+	if len(builtins) == 0 {
+		return nil, fmt.Errorf("no sys_config for group %s", group)
+	}
+
+	_ = s.cache.Set(ctx, cacheKey, builtins, sysConfigTTL)
+	return builtins, nil
 }
