@@ -65,6 +65,6 @@ func (r *Router) Setup(engine *gin.Engine) {
 		r.sourceCtrl.RegisterRoutes(v1)
 
 		// 导入路由（需认证）
-		r.importCtrl.RegisterRoutes(v1)
+		r.importCtrl.RegisterRoutes(v1, r.tokenBlacklist)
 	}
 }

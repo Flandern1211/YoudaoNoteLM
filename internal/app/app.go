@@ -5,6 +5,8 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
+	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
 	"YoudaoNoteLm/pkg/logger"
@@ -136,14 +138,29 @@ func (a *App) initDependencies() {
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	sourceSvc := service.NewSourceService(sourceRepo)
 
-	// TODO: 初始化外部服务和导入服务（需要配置）
-	// markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
-	// asrService := external.NewASRService(a.cfg.External.ASR.URL, a.cfg.External.ASR.APIKey)
-	// minioStorage := external.NewMinIOStorage(...)
-	// importerSvc := service.NewImporterService(markitdownClient, asrService, minioStorage, sourceRepo, importCache, previewCache, nil)
+	// 创建外部服务客户端
+	markitdownClient := external.NewMarkitdownClient(a.cfg.MCP.MarkItDownURL)
+	asrSvc := external.NewASRService(a.cfg.External.ASR.URL, a.cfg.External.ASR.APIKey)
+	minioStorage := external.NewMinIOStorage(
+		a.cfg.External.MinIO.Endpoint,
+		a.cfg.External.MinIO.AccessKey,
+		a.cfg.External.MinIO.SecretKey,
+		a.cfg.External.MinIO.Bucket,
+	)
 
-	// 创建 Router（暂时传nil给importerService）
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, nil, captchaSvc, tokenBlacklistSvc)
+	// 创建缓存
+	redisCache := cache.New(a.redis)
+	importTaskCache := cache.NewImportTaskCache(redisCache)
+	audioPreviewCache := cache.NewAudioPreviewCache(redisCache)
+
+	// 创建导入服务（EmbeddingService 暂时为 nil，后续模块接入）
+	importerSvc := service.NewImporterService(
+		markitdownClient, asrSvc, minioStorage,
+		sourceRepo, importTaskCache, audioPreviewCache, nil,
+	)
+
+	// 创建 Router
+	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由

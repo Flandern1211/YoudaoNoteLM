@@ -37,7 +37,18 @@ jwt:
 
 # MCP Server 配置
 mcp:
-  markitdown_url: "http://localhost:3001"
+  markitdown_url: "http://localhost:8085"
+
+# 外部服务配置
+external:
+  asr:
+    url: "http://localhost:8086"      # ASR 服务地址
+    api_key: ""                        # ASR API Key（可选）
+  minio:
+    endpoint: "localhost:9000"         # MinIO 地址
+    access_key: "minioadmin"           # MinIO Access Key
+    secret_key: "minioadmin"           # MinIO Secret Key
+    bucket: "youdaonotelm"             # MinIO Bucket 名称
 
 # 日志配置
 log:

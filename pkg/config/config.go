@@ -4,12 +4,39 @@ import "time"
 
 // Config 应用配置结构体
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Database DatabaseConfig `mapstructure:"database"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
-	CORS     CORSConfig     `mapstructure:"cors"`
-	Email    EmailConfig    `mapstructure:"email"`
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Log       LogConfig       `mapstructure:"log"`
+	CORS      CORSConfig      `mapstructure:"cors"`
+	Email     EmailConfig     `mapstructure:"email"`
+	MCP       MCPConfig       `mapstructure:"mcp"`
+	External  ExternalConfig  `mapstructure:"external"`
+}
+
+// MCPConfig MCP 服务配置
+type MCPConfig struct {
+	MarkItDownURL string `mapstructure:"markitdown_url"`
+}
+
+// ExternalConfig 外部服务配置
+type ExternalConfig struct {
+	ASR   ASRConfig   `mapstructure:"asr"`
+	MinIO MinIOConfig `mapstructure:"minio"`
+}
+
+// ASRConfig ASR 语音转文本配置
+type ASRConfig struct {
+	URL    string `mapstructure:"url"`
+	APIKey string `mapstructure:"api_key"`
+}
+
+// MinIOConfig MinIO 对象存储配置
+type MinIOConfig struct {
+	Endpoint  string `mapstructure:"endpoint"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	Bucket    string `mapstructure:"bucket"`
 }
 
 // AppConfig 应用配置
