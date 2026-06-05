@@ -107,6 +107,7 @@ func (a *App) initDatabase() error {
 	logger.Info("开始数据库迁移...")
 	if err := a.mysqlDB.AutoMigrate(
 		&entity.User{},
+		&entity.Source{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -139,14 +140,20 @@ func (a *App) initDependencies() {
 	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建外部服务客户端
-	markitdownClient := external.NewMarkitdownClient(a.cfg.MCP.MarkItDownURL)
-	asrSvc := external.NewASRService(a.cfg.External.ASR.URL, a.cfg.External.ASR.APIKey)
+	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
 	minioStorage := external.NewMinIOStorage(
 		a.cfg.External.MinIO.Endpoint,
 		a.cfg.External.MinIO.AccessKey,
 		a.cfg.External.MinIO.SecretKey,
 		a.cfg.External.MinIO.Bucket,
 	)
+
+	// ASR 服务（根据 provider 配置自动选择实现）
+	asrSvc := external.NewASRService(a.cfg.External.ASR)
+	// 注入 MinIO 存储，ASR 需要生成预签名 URL
+	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
+		setter.SetStorage(minioStorage)
+	}
 
 	// 创建缓存
 	redisCache := cache.New(a.redis)

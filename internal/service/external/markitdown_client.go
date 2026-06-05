@@ -37,13 +37,18 @@ func (c *markitdownClient) Convert(filePath string) (string, error) {
 	}
 	defer file.Close()
 
+	return c.ConvertReader(filepath.Base(filePath), file)
+}
+
+// ConvertReader 通过 io.Reader 上传文件转 Markdown
+func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
 		return "", fmt.Errorf("创建表单文件失败: %w", err)
 	}
-	if _, err := io.Copy(part, file); err != nil {
+	if _, err := io.Copy(part, reader); err != nil {
 		return "", fmt.Errorf("写入文件内容失败: %w", err)
 	}
 	if err := writer.Close(); err != nil {
@@ -75,7 +80,7 @@ func (c *markitdownClient) Convert(filePath string) (string, error) {
 		return string(respBody), nil
 	}
 
-	logger.Info("MarkItDown转换成功", zap.String("file", filePath))
+	logger.Info("MarkItDown转换成功", zap.String("file", filename))
 	return result.Markdown, nil
 }
 

@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"YoudaoNoteLm/pkg/cache"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
+	"YoudaoNoteLm/pkg/utils"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -71,12 +74,25 @@ func (s *importerService) ImportFile(userID, notebookID uint, file *multipart.Fi
 		return nil, bizerrors.ErrFileTooLarge
 	}
 
+	// 读取文件内容（用于 MarkItDown 转换）
+	src, err := file.Open()
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "打开上传文件失败", err)
+	}
+	fileBytes, err := io.ReadAll(src)
+	src.Close()
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "读取上传文件失败", err)
+	}
+
+	// 上传到 MinIO 存储
 	filePath, err := s.storage.Upload(file)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "文件上传失败", err)
 	}
 
-	markdown, err := s.markitdown.Convert(filePath)
+	// 通过 io.Reader 传给 MarkItDown 转换
+	markdown, err := s.markitdown.ConvertReader(file.Filename, bytes.NewReader(fileBytes))
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeFileParseFailed, "文件解析失败", err)
 	}
@@ -121,13 +137,34 @@ func (s *importerService) PreviewAudio(userID, notebookID uint, file *multipart.
 		return "", "", "", bizerrors.ErrFileTooLarge
 	}
 
+	// 上传原始文件到 MinIO
 	filePath, err := s.storage.Upload(file)
 	if err != nil {
 		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "音频上传失败", err)
 	}
 
-	text, err := s.asr.Transcribe(filePath)
+	// 转换音频为阿里云 ASR 兼容格式（16kHz 单声道 WAV）
+	asrFilePath := filePath
+	convertedData, convErr := s.convertAudioForASR(file, filePath, ext)
+	if convErr != nil {
+		logger.Warn("音频格式转换失败，将使用原始文件", zap.String("file", filePath), zap.Error(convErr))
+	} else if convertedData != nil {
+		// 上传转换后的文件到 MinIO
+		asrPath := strings.TrimSuffix(filePath, ext) + "_16k.wav"
+		if uploadErr := s.storage.UploadBytes(asrPath, convertedData, "audio/wav"); uploadErr != nil {
+			logger.Warn("上传转换后音频失败，将使用原始文件", zap.String("file", filePath), zap.Error(uploadErr))
+		} else {
+			asrFilePath = asrPath
+			logger.Info("音频格式转换成功",
+				zap.String("original", filePath),
+				zap.String("converted", asrPath),
+			)
+		}
+	}
+
+	text, err := s.asr.Transcribe(asrFilePath)
 	if err != nil {
+		logger.Error("ASR转写失败", zap.String("file", filePath), zap.Error(err))
 		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeASTranscriptionFailed, "音频转写失败", err)
 	}
 
@@ -203,6 +240,30 @@ func (s *importerService) ConfirmAudio(userID uint, previewID string, editedCont
 	}
 
 	return source, nil
+}
+
+// convertAudioForASR 转换音频为 ASR 兼容格式
+// 如果已经是 16kHz 单声道则返回 nil（无需转换）
+func (s *importerService) convertAudioForASR(file *multipart.FileHeader, filePath, ext string) ([]byte, error) {
+	// 读取文件内容
+	src, err := file.Open()
+	if err != nil {
+		return nil, fmt.Errorf("打开音频文件失败: %w", err)
+	}
+	defer src.Close()
+
+	audioData, err := io.ReadAll(src)
+	if err != nil {
+		return nil, fmt.Errorf("读取音频文件失败: %w", err)
+	}
+
+	// 转换为 16kHz 单声道 WAV
+	converted, err := utils.ConvertBytesToASRFormat(audioData, ext)
+	if err != nil {
+		return nil, fmt.Errorf("音频转换失败: %w", err)
+	}
+
+	return converted, nil
 }
 
 // ImportSearchResults 批量导入搜索结果
