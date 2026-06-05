@@ -35,9 +35,21 @@ jwt:
   refresh_token_exp: "24h"    # Refresh Token 过期时间：1 天
   issuer: "mindtrace"         # Token 签发者
 
-# MCP Server 配置
-mcp:
-  markitdown_url: "http://localhost:3001"
+# 外部服务配置
+external:
+  markitdown:
+    url: "http://localhost:8085"       # MarkItDown 文档转换服务地址
+  asr:
+    provider: "aliyun_nls"             # aliyun_nls / whisper / ...
+    params:
+      access_key_id: "your_key_id"
+      access_key_secret: "your_key_secret"
+      app_key: "your_app_key"
+  minio:
+    endpoint: "localhost:9000"         # MinIO 地址（不带 http://）
+    access_key: "minioadmin"           # MinIO Access Key
+    secret_key: "minioadmin"           # MinIO Secret Key
+    bucket: "youdaonotelm"             # MinIO Bucket 名称
 
 # 日志配置
 log:

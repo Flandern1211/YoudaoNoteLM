@@ -5,6 +5,8 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
+	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
 	"YoudaoNoteLm/pkg/logger"
@@ -114,6 +116,7 @@ func (a *App) initDatabase() error {
 		&entity.UserLLMConfig{},
 		&entity.YoudaoBinding{},
 		&entity.SysConfig{},
+		&entity.Source{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -147,8 +150,36 @@ func (a *App) initDependencies() {
 	notebookSvc := service.NewNotebookService(notebookRepo)
 	sourceSvc := service.NewSourceService(sourceRepo)
 
+	// 创建外部服务客户端
+	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
+	minioStorage := external.NewMinIOStorage(
+		a.cfg.External.MinIO.Endpoint,
+		a.cfg.External.MinIO.AccessKey,
+		a.cfg.External.MinIO.SecretKey,
+		a.cfg.External.MinIO.Bucket,
+	)
+
+	// ASR 服务（根据 provider 配置自动选择实现）
+	asrSvc := external.NewASRService(a.cfg.External.ASR)
+	// 注入 MinIO 存储，ASR 需要生成预签名 URL
+	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
+		setter.SetStorage(minioStorage)
+	}
+
+	// 创建缓存
+	redisCache := cache.New(a.redis)
+	importTaskCache := cache.NewImportTaskCache(redisCache)
+	audioPreviewCache := cache.NewAudioPreviewCache(redisCache)
+
+	// 创建导入服务（EmbeddingService 暂时为 nil，后续模块接入）
+	importerSvc := service.NewImporterService(
+		markitdownClient, asrSvc, minioStorage,
+		sourceRepo, importTaskCache, audioPreviewCache, nil,
+	)
+
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由
