@@ -9,8 +9,8 @@ import (
 // AudioPreview 音频预览缓存结构
 type AudioPreview struct {
 	PreviewID       string `json:"preview_id"`       // 预览ID(UUID)
-	UserID          int    `json:"user_id"`          // 所属用户
-	NotebookID      int    `json:"notebook_id"`      // 所属笔记本
+	UserID          uint   `json:"user_id"`          // 所属用户
+	NotebookID      uint   `json:"notebook_id"`      // 所属笔记本
 	FileName        string `json:"file_name"`        // 文件名
 	FilePath        string `json:"file_path"`        // 对象存储文件路径
 	FileSize        int64  `json:"file_size"`        // 文件大小(字节)

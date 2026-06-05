@@ -31,3 +31,9 @@ type UpdateUsernameRequest struct {
 type UploadAvatarRequest struct {
 	Avatar *multipart.FileHeader `form:"avatar" binding:"required"`
 }
+
+// DeleteAccountRequest 注销用户请求
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required"`
+	Code     string `json:"code" binding:"required,len=6"`
+}

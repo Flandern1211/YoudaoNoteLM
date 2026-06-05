@@ -4,8 +4,8 @@ import "time"
 
 // SourceResponse 资料来源响应
 type SourceResponse struct {
-	ID           int       `json:"id"`
-	NotebookID   int       `json:"notebook_id"`
+	ID           uint      `json:"id"`
+	NotebookID   uint      `json:"notebook_id"`
 	Name         string    `json:"name"`
 	Type         string    `json:"type"`
 	OriginalURL  string    `json:"original_url"`

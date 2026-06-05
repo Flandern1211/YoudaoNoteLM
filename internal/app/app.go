@@ -108,7 +108,12 @@ func (a *App) initDatabase() error {
 		&entity.Notebook{},
 		&entity.Conversation{},
 		&entity.Message{},
+		&entity.Source{},
 		&entity.ParentBlock{},
+		&entity.UserConfig{},
+		&entity.UserLLMConfig{},
+		&entity.YoudaoBinding{},
+		&entity.SysConfig{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -129,6 +134,7 @@ func (a *App) initDatabase() error {
 func (a *App) initDependencies() {
 	// 创建 Repository
 	userRepo := repository.NewUserRepository(a.mysqlDB)
+	notebookRepo := repository.NewNotebookRepository(a.mysqlDB)
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
 
 	// 创建 Service
@@ -138,10 +144,11 @@ func (a *App) initDependencies() {
 	tokenBlacklistSvc := service.NewTokenBlacklistService(a.redis)
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
+	notebookSvc := service.NewNotebookService(notebookRepo)
 	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由

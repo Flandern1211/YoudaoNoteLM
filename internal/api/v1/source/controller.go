@@ -24,11 +24,12 @@ func NewController(sourceService service.SourceService, tokenBlacklist service.T
 // List 获取来源列表
 func (ctrl *Controller) List(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	nbID, err := strconv.Atoi(c.Param("nbId"))
+	nbID64, err := strconv.ParseUint(c.Param("nbId"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的笔记本ID")
 		return
 	}
+	nbID := uint(nbID64)
 
 	keyword := c.Query("keyword")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -45,11 +46,12 @@ func (ctrl *Controller) List(c *gin.Context) {
 
 // GetByID 获取来源详情
 func (ctrl *Controller) GetByID(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的ID")
 		return
 	}
+	id := uint(id64)
 
 	source, err := ctrl.sourceService.GetByID(id)
 	if err != nil {
@@ -62,11 +64,12 @@ func (ctrl *Controller) GetByID(c *gin.Context) {
 
 // Rename 重命名来源
 func (ctrl *Controller) Rename(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的ID")
 		return
 	}
+	id := uint(id64)
 
 	var req struct {
 		Name string `json:"name" binding:"required"`
@@ -86,11 +89,12 @@ func (ctrl *Controller) Rename(c *gin.Context) {
 
 // Delete 删除来源
 func (ctrl *Controller) Delete(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的ID")
 		return
 	}
+	id := uint(id64)
 
 	if err := ctrl.sourceService.Delete(id); err != nil {
 		response.BizError(c, err)
@@ -118,11 +122,12 @@ func (ctrl *Controller) BatchDelete(c *gin.Context) {
 
 // GetContent 获取Markdown内容
 func (ctrl *Controller) GetContent(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的ID")
 		return
 	}
+	id := uint(id64)
 
 	content, err := ctrl.sourceService.GetContent(id)
 	if err != nil {
@@ -135,11 +140,12 @@ func (ctrl *Controller) GetContent(c *gin.Context) {
 
 // GetOriginal 获取原格式内容
 func (ctrl *Controller) GetOriginal(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "无效的ID")
 		return
 	}
+	id := uint(id64)
 
 	content, contentType, err := ctrl.sourceService.GetOriginalContent(id)
 	if err != nil {

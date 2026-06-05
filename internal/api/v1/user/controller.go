@@ -156,3 +156,32 @@ func (ctrl *Controller) UploadAvatar(c *gin.Context) {
 
 	response.Success(c, gin.H{"avatar": avatarURL})
 }
+
+// DeleteAccount 注销用户
+func (ctrl *Controller) DeleteAccount(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	var req request.DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := ctrl.userService.DeleteAccount(userID, &req); err != nil {
+		response.BizError(c, err)
+		return
+	}
+
+	// 使当前 token 失效
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		token := authHeader[7:]
+		_ = ctrl.tokenBlacklist.RevokeToken(c.Request.Context(), token)
+	}
+
+	response.Success(c, gin.H{"message": "账号已注销"})
+}

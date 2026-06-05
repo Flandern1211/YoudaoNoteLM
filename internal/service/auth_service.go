@@ -78,7 +78,7 @@ func (s *authService) Login(ctx context.Context, req *request.LoginRequest) (*dt
 	// 登录成功，重置失败次数
 	if user.FailedAttempts > 0 || user.LockedUntil != nil {
 		if err := s.userRepo.ResetLoginAttempts(user.ID); err != nil {
-			logger.Error("重置登录失败次数失败", zap.Int("user_id", user.ID), zap.Error(err))
+			logger.Error("重置登录失败次数失败", zap.Uint("user_id", user.ID), zap.Error(err))
 		}
 	}
 
@@ -104,11 +104,11 @@ func (s *authService) handleLoginFailure(user *entity.User) {
 		// 锁定账户 15 分钟
 		lockUntil := time.Now().Add(lockDuration)
 		if err := s.userRepo.LockUser(user.ID, lockUntil); err != nil {
-			logger.Error("锁定用户失败", zap.Int("user_id", user.ID), zap.Error(err))
+			logger.Error("锁定用户失败", zap.Uint("user_id", user.ID), zap.Error(err))
 		}
 	} else {
 		if err := s.userRepo.UpdateLoginAttempts(user.ID, attempts); err != nil {
-			logger.Error("更新登录失败次数失败", zap.Int("user_id", user.ID), zap.Error(err))
+			logger.Error("更新登录失败次数失败", zap.Uint("user_id", user.ID), zap.Error(err))
 		}
 	}
 }
@@ -148,7 +148,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 
 	// 将旧的 refresh token 加入黑名单（防止重放攻击）
 	if err := s.tokenBlacklist.RevokeToken(ctx, refreshToken); err != nil {
-		logger.Error("吊销旧 refresh token 失败", zap.Int("user_id", user.ID), zap.Error(err))
+		logger.Error("吊销旧 refresh token 失败", zap.Uint("user_id", user.ID), zap.Error(err))
 	}
 
 	// 生成新的 token 对
@@ -196,8 +196,8 @@ func (s *authService) SendCode(ctx context.Context, req *request.SendCodeRequest
 		if exists {
 			return nil, bizerrors.New(bizerrors.CodeUserAlreadyExists, "邮箱已被注册")
 		}
-	case "reset":
-		// 重置密码验证码：检查邮箱是否已注册
+	case "reset", "delete_account":
+		// 重置密码/注销账号验证码：检查邮箱是否已注册
 		exists, err := s.userRepo.ExistsByEmail(req.Email)
 		if err != nil {
 			return nil, err

@@ -78,9 +78,9 @@ func Auth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 }
 
 // GetUserID 从上下文获取用户 ID
-func GetUserID(c *gin.Context) int {
+func GetUserID(c *gin.Context) uint {
 	if userID, exists := c.Get(ContextUserID); exists {
-		return userID.(int)
+		return userID.(uint)
 	}
 	return 0
 }

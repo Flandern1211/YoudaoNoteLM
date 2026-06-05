@@ -4,7 +4,7 @@ import "time"
 
 // UserResponse 用户响应
 type UserResponse struct {
-	ID        int       `json:"id"`
+	ID        uint      `json:"id"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	Nickname  string    `json:"nickname"`

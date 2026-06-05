@@ -9,8 +9,8 @@ import (
 // ImportTask 导入任务缓存结构
 type ImportTask struct {
 	TaskID       string `json:"task_id"`       // 任务ID
-	UserID       int    `json:"user_id"`       // 所属用户
-	NotebookID   int    `json:"notebook_id"`   // 所属笔记本
+	UserID       uint   `json:"user_id"`       // 所属用户
+	NotebookID   uint   `json:"notebook_id"`   // 所属笔记本
 	TaskType     string `json:"task_type"`     // 任务类型: batch_file/batch_url/youdao
 	TotalCount   int    `json:"total_count"`   // 总数
 	SuccessCount int    `json:"success_count"` // 成功数

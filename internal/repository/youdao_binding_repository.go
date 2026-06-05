@@ -15,7 +15,7 @@ func NewYoudaoBindingRepository(db *gorm.DB) YoudaoBindingRepository {
 	return &youdaoBindingRepository{db: db}
 }
 
-func (r *youdaoBindingRepository) FindByUserID(userID int) (*entity.YoudaoBinding, error) {
+func (r *youdaoBindingRepository) FindByUserID(userID uint) (*entity.YoudaoBinding, error) {
 	var binding entity.YoudaoBinding
 	err := r.db.Where("user_id = ?", userID).First(&binding).Error
 	if err != nil {
@@ -35,6 +35,6 @@ func (r *youdaoBindingRepository) Update(binding *entity.YoudaoBinding) error {
 	return r.db.Save(binding).Error
 }
 
-func (r *youdaoBindingRepository) Delete(userID int) error {
+func (r *youdaoBindingRepository) Delete(userID uint) error {
 	return r.db.Where("user_id = ?", userID).Delete(&entity.YoudaoBinding{}).Error
 }
