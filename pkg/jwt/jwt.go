@@ -35,7 +35,7 @@ type TokenPair struct {
 }
 
 // GenerateAccessToken 生成 Access Token（15 分钟）
-func GenerateAccessToken(userID int, username string) (string, error) {
+func GenerateAccessToken(userID uint, username string) (string, error) {
 	cfg := config.Get().JWT
 	exp := cfg.GetAccessTokenExp()
 
@@ -57,7 +57,7 @@ func GenerateAccessToken(userID int, username string) (string, error) {
 }
 
 // GenerateRefreshToken 生成 Refresh Token（7 天）
-func GenerateRefreshToken(userID int, username string) (string, error) {
+func GenerateRefreshToken(userID uint, username string) (string, error) {
 	cfg := config.Get().JWT
 	exp := cfg.GetRefreshTokenExp()
 
@@ -79,7 +79,7 @@ func GenerateRefreshToken(userID int, username string) (string, error) {
 }
 
 // GenerateTokenPair 生成 Access + Refresh Token 对
-func GenerateTokenPair(userID int, username string) (*TokenPair, error) {
+func GenerateTokenPair(userID uint, username string) (*TokenPair, error) {
 	accessToken, err := GenerateAccessToken(userID, username)
 	if err != nil {
 		return nil, err

@@ -15,7 +15,7 @@ func NewUserConfigRepository(db *gorm.DB) UserConfigRepository {
 	return &userConfigRepository{db: db}
 }
 
-func (r *userConfigRepository) FindByUserAndType(userID int, configType string) (*entity.UserConfig, error) {
+func (r *userConfigRepository) FindByUserAndType(userID uint, configType string) (*entity.UserConfig, error) {
 	var config entity.UserConfig
 	err := r.db.Where("user_id = ? AND config_type = ?", userID, configType).First(&config).Error
 	if err != nil {
@@ -27,7 +27,7 @@ func (r *userConfigRepository) FindByUserAndType(userID int, configType string) 
 	return &config, nil
 }
 
-func (r *userConfigRepository) FindByID(id int) (*entity.UserConfig, error) {
+func (r *userConfigRepository) FindByID(id uint) (*entity.UserConfig, error) {
 	var config entity.UserConfig
 	err := r.db.First(&config, id).Error
 	if err != nil {
@@ -47,6 +47,6 @@ func (r *userConfigRepository) Update(config *entity.UserConfig) error {
 	return r.db.Save(config).Error
 }
 
-func (r *userConfigRepository) Delete(id int) error {
+func (r *userConfigRepository) Delete(id uint) error {
 	return r.db.Delete(&entity.UserConfig{}, id).Error
 }
