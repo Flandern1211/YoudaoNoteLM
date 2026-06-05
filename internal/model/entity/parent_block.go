@@ -1,6 +1,6 @@
 package entity
 
-// ParentBlock 父块实体（资料来源的父子分块中的父块）
+// ParentBlock 父块实体
 type ParentBlock struct {
 	BaseEntity
 	SourceID   int    `gorm:"index;not null;comment:所属资料来源ID"`
