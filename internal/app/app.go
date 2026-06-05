@@ -136,8 +136,14 @@ func (a *App) initDependencies() {
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	sourceSvc := service.NewSourceService(sourceRepo)
 
-	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
+	// TODO: 初始化外部服务和导入服务（需要配置）
+	// markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
+	// asrService := external.NewASRService(a.cfg.External.ASR.URL, a.cfg.External.ASR.APIKey)
+	// minioStorage := external.NewMinIOStorage(...)
+	// importerSvc := service.NewImporterService(markitdownClient, asrService, minioStorage, sourceRepo, importCache, previewCache, nil)
+
+	// 创建 Router（暂时传nil给importerService）
+	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, nil, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由
