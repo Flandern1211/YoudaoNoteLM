@@ -6,6 +6,7 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/pkg/response"
 	"context"
+	"mime/multipart"
 )
 
 // UserService 用户服务接口
@@ -16,6 +17,10 @@ type UserService interface {
 	GetUserByID(id int) (*entity.User, error)
 	// UpdateUser 更新用户信息
 	UpdateUser(id int, req *request.UpdateUserRequest) error
+	// UpdateUsername 修改用户名
+	UpdateUsername(id int, req *request.UpdateUsernameRequest) error
+	// UploadAvatar 上传头像
+	UploadAvatar(id int, file *multipart.FileHeader) (string, error)
 	// ChangePassword 修改密码
 	ChangePassword(id int, req *request.ChangePasswordRequest) error
 	// GetUserResponse 获取用户响应

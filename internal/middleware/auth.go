@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"YoudaoNoteLm/internal/service"
+	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/jwt"
 	"YoudaoNoteLm/pkg/response"
 	"strings"
@@ -38,14 +39,19 @@ func Auth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 		// 解析 Token
 		claims, err := jwt.ParseToken(parts[1])
 		if err != nil {
-			response.Unauthorized(c, err.Error())
+			// 根据错误类型返回对应业务错误码
+			if err == jwt.ErrTokenExpired {
+				response.Error(c, bizerrors.CodeTokenExpired, err.Error())
+			} else {
+				response.Error(c, bizerrors.CodeInvalidToken, err.Error())
+			}
 			c.Abort()
 			return
 		}
 
 		// 必须是 access token
 		if claims.TokenType != jwt.AccessToken {
-			response.Unauthorized(c, "请使用 access_token 进行认证")
+			response.Error(c, bizerrors.CodeInvalidToken, "请使用 access_token 进行认证")
 			c.Abort()
 			return
 		}
@@ -58,7 +64,7 @@ func Auth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 			return
 		}
 		if revoked {
-			response.Unauthorized(c, "令牌已失效，请重新登录")
+			response.Error(c, bizerrors.CodeInvalidToken, "令牌已失效，请重新登录")
 			c.Abort()
 			return
 		}
