@@ -12,12 +12,13 @@ import (
 
 // Controller 资料来源控制器
 type Controller struct {
-	sourceService service.SourceService
+	sourceService  service.SourceService
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewController 创建来源控制器
-func NewController(sourceService service.SourceService) *Controller {
-	return &Controller{sourceService: sourceService}
+func NewController(sourceService service.SourceService, tokenBlacklist service.TokenBlacklistService) *Controller {
+	return &Controller{sourceService: sourceService, tokenBlacklist: tokenBlacklist}
 }
 
 // List 获取来源列表

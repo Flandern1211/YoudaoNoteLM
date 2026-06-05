@@ -137,7 +137,7 @@ func (a *App) initDependencies() {
 	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, captchaSvc, tokenBlacklistSvc,sourceSvc)
+	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由

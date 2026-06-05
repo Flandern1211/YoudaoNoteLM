@@ -14,7 +14,7 @@ type Router struct {
 	userCtrl       *user.Controller
 	authCtrl       *auth.Controller
 	tokenBlacklist service.TokenBlacklistService
-	sourceCtrl  *source.Controller
+	sourceCtrl     *source.Controller
 }
 
 // NewRouter 创建路由
@@ -29,7 +29,7 @@ func NewRouter(
 		userCtrl:       user.NewController(userService, tokenBlacklist),
 		authCtrl:       auth.NewController(authService, userService, captchaSvc),
 		tokenBlacklist: tokenBlacklist,
-		sourceCtrl: source.NewController(sourceService),
+		sourceCtrl:     source.NewController(sourceService, tokenBlacklist),
 	}
 }
 

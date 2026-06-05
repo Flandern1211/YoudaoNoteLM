@@ -8,7 +8,7 @@ import (
 // RegisterRoutes 注册资料来源路由
 func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	sources := r.Group("/notebooks/:nbId/sources")
-	sources.Use(middleware.Auth())
+	sources.Use(middleware.Auth(ctrl.tokenBlacklist))
 	{
 		sources.GET("", ctrl.List)
 		sources.GET("/:id", ctrl.GetByID)
