@@ -2,6 +2,7 @@ package app
 
 import (
 	"YoudaoNoteLm/internal/api"
+	searchAgent "YoudaoNoteLm/internal/agent/search"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
@@ -139,6 +140,8 @@ func (a *App) initDependencies() {
 	userRepo := repository.NewUserRepository(a.mysqlDB)
 	notebookRepo := repository.NewNotebookRepository(a.mysqlDB)
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
+	sysConfigRepo := repository.NewSysConfigRepository(a.mysqlDB)
+	userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
 
 	// 创建 Service
 	emailSvc := service.NewEmailService()
@@ -177,9 +180,15 @@ func (a *App) initDependencies() {
 		sourceRepo, importTaskCache, audioPreviewCache, nil,
 	)
 
+	// 创建 ConfigService（配置路由降级）
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache)
+
+	// 创建搜索 Agent（LLM 客户端在每次请求时通过 ConfigService 获取）
+	searchAgent := searchAgent.NewSearchAgent(configSvc, importerSvc)
+	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchAgent)
+
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由

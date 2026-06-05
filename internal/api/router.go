@@ -2,8 +2,9 @@ package api
 
 import (
 	"YoudaoNoteLm/internal/api/v1/auth"
-	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/importn"
+	"YoudaoNoteLm/internal/api/v1/notebook"
+	search "YoudaoNoteLm/internal/api/v1/search"
 	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
 	"YoudaoNoteLm/internal/middleware"
@@ -19,6 +20,7 @@ type Router struct {
 	sourceCtrl     *source.Controller
 	tokenBlacklist service.TokenBlacklistService
 	importCtrl     *importn.Controller
+	searchCtrl     *search.Controller
 }
 
 // NewRouter 创建路由
@@ -28,6 +30,7 @@ func NewRouter(
 	notebookService service.NotebookService,
 	sourceService service.SourceService,
 	importerService service.ImporterService,
+	searchAgentService service.SearchAgentService,
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
 ) *Router {
@@ -38,6 +41,7 @@ func NewRouter(
 		sourceCtrl:     source.NewController(sourceService, tokenBlacklist),
 		tokenBlacklist: tokenBlacklist,
 		importCtrl:     importn.NewController(importerService),
+		searchCtrl:     search.NewController(searchAgentService, tokenBlacklist),
 	}
 }
 
@@ -76,5 +80,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 导入路由（需认证）
 		r.importCtrl.RegisterRoutes(v1, r.tokenBlacklist)
+
+		// 搜索路由（需认证）
+		r.searchCtrl.RegisterRoutes(v1)
 	}
 }
