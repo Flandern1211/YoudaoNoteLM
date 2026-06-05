@@ -11,6 +11,7 @@ import (
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/cache"
+	"YoudaoNoteLm/pkg/config"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
 
@@ -39,6 +40,7 @@ type configService struct {
 	sysConfigRepo  repository.SysConfigRepository
 	userConfigRepo repository.UserConfigRepository
 	cache          *cache.Cache
+	searchCfg      config.SearchConfig
 }
 
 // NewConfigService 创建配置服务
@@ -46,11 +48,13 @@ func NewConfigService(
 	sysConfigRepo repository.SysConfigRepository,
 	userConfigRepo repository.UserConfigRepository,
 	cache *cache.Cache,
+	searchCfg config.SearchConfig,
 ) ConfigService {
 	return &configService{
 		sysConfigRepo:  sysConfigRepo,
 		userConfigRepo: userConfigRepo,
 		cache:          cache,
+		searchCfg:      searchCfg,
 	}
 }
 
@@ -110,8 +114,14 @@ func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, err
 		}
 	}
 
-	// 3. DuckDuckGo 兜底
-	logger.Info("使用 DuckDuckGo 兜底搜索引擎")
+	// 3. 系统配置的搜索引擎（Bing 等）
+	if s.searchCfg.Provider == "bing" && s.searchCfg.APIKey != "" {
+		logger.Info("使用系统配置的 Bing 搜索引擎")
+		return external.NewBingEngine(s.searchCfg.APIKey), nil
+	}
+
+	// 4. DuckDuckGo 兜底（国内不可用，仅作最后手段）
+	logger.Info("使用 DuckDuckGo 兜底搜索引擎（注意：国内网络可能不可用）")
 	return external.NewDuckDuckGoEngine(), nil
 }
 
