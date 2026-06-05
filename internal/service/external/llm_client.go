@@ -131,6 +131,24 @@ func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiRespo
 			Content:    m.Content,
 			ToolCallID: m.ToolCallID,
 		}
+		// 转换 tool_calls（assistant 消息携带）
+		if len(m.ToolCalls) > 0 {
+			oaiMessages[i].ToolCalls = make([]openaiToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				argsBytes, _ := json.Marshal(tc.Arguments)
+				oaiMessages[i].ToolCalls[j] = openaiToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{
+						Name:      tc.Name,
+						Arguments: string(argsBytes),
+					},
+				}
+			}
+		}
 	}
 
 	reqBody := openaiRequest{

@@ -20,19 +20,16 @@ const maxAgentRounds = 5
 type SearchAgent struct {
 	configService service.ConfigService
 	importer      service.ImporterService
-	llmClient     external.LLMClient
 }
 
 // NewSearchAgent 创建搜索 Agent
 func NewSearchAgent(
 	configService service.ConfigService,
 	importer service.ImporterService,
-	llmClient external.LLMClient,
 ) *SearchAgent {
 	return &SearchAgent{
 		configService: configService,
 		importer:      importer,
-		llmClient:     llmClient,
 	}
 }
 
@@ -42,10 +39,17 @@ func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task
 	// 注入 userID 和 notebookID 到 context
 	ctx = WithUserID(ctx, userID)
 	ctx = WithNotebookID(ctx, notebookID)
+
+	// 通过 ConfigService 获取用户的 LLM 客户端
+	llmClient, err := a.configService.GetLLMClient(userID)
+	if err != nil {
+		return nil, err
+	}
+
 	tools := []Tool{
 		NewWebSearchTool(a.configService),
-		NewAnalyzeResultsTool(a.llmClient),
-		NewRefineQueryTool(a.llmClient),
+		NewAnalyzeResultsTool(llmClient),
+		NewRefineQueryTool(llmClient),
 		NewImportURLsTool(a.importer),
 	}
 
@@ -71,7 +75,7 @@ func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task
 	for round := 0; round < maxAgentRounds; round++ {
 		logger.Info("Agent 循环", zap.Int("round", round+1))
 
-		resp, err := a.llmClient.ChatWithTools(messages, toolDefs)
+		resp, err := llmClient.ChatWithTools(messages, toolDefs)
 		if err != nil {
 			return nil, bizerrors.NewWithErr(bizerrors.CodeLLMCallFailed, "LLM调用失败", err)
 		}
@@ -86,8 +90,9 @@ func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task
 
 		// 记录 assistant 消息（含 tool_calls）
 		messages = append(messages, external.Message{
-			Role:    "assistant",
-			Content: resp.Content,
+			Role:      "assistant",
+			Content:   resp.Content,
+			ToolCalls: resp.ToolCalls,
 		})
 
 		// 执行每个工具调用
@@ -128,7 +133,7 @@ func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task
 	// 超过最大轮数，强制返回
 	logger.Warn("Agent 达到最大轮数，强制返回", zap.Int("maxRounds", maxAgentRounds))
 
-	finalResp, err := a.llmClient.Chat(messages)
+	finalResp, err := llmClient.Chat(messages)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeLLMCallFailed, "最终回复生成失败", err)
 	}

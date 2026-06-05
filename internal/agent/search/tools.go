@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"YoudaoNoteLm/internal/service"
 	"YoudaoNoteLm/internal/service/external"
@@ -12,6 +13,25 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// stripCodeBlock 去除 LLM 返回的 markdown 代码块标记
+func stripCodeBlock(s string) string {
+	s = strings.TrimSpace(s)
+	// 处理 ```json ... ``` 或 ``` ... ```
+	if strings.HasPrefix(s, "```") {
+		// 找到第一行结束
+		idx := strings.Index(s, "\n")
+		if idx != -1 {
+			s = s[idx+1:]
+		}
+		// 去掉末尾的 ```
+		if strings.HasSuffix(s, "```") {
+			s = s[:len(s)-3]
+		}
+		s = strings.TrimSpace(s)
+	}
+	return s
+}
 
 // ========== web_search 工具 ==========
 
@@ -140,7 +160,8 @@ func (t *analyzeResultsTool) Execute(ctx context.Context, params map[string]any)
 			Reason  string  `json:"reason"`
 		} `json:"ranked"`
 	}
-	if err := json.Unmarshal([]byte(resp), &result); err != nil {
+	cleaned := stripCodeBlock(resp)
+	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
 		logger.Warn("解析analyze_results LLM响应失败", zap.String("raw", resp), zap.Error(err))
 		return map[string]any{"raw": resp}, nil
 	}
@@ -203,7 +224,8 @@ func (t *refineQueryTool) Execute(ctx context.Context, params map[string]any) (a
 	var result struct {
 		RefinedQueries []string `json:"refined_queries"`
 	}
-	if err := json.Unmarshal([]byte(resp), &result); err != nil {
+	cleaned := stripCodeBlock(resp)
+	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
 		logger.Warn("解析refine_query LLM响应失败", zap.String("raw", resp), zap.Error(err))
 		return map[string]any{"raw": resp}, nil
 	}
