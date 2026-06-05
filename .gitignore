@@ -49,7 +49,9 @@ Thumbs.db
 .superpowers
 claude.md
 /configs/config.yaml
+/uploads/
 
 
 # docs
 docs/
+/docs/

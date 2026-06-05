@@ -2,6 +2,7 @@ package request
 
 import (
 	"YoudaoNoteLm/pkg/response"
+	"mime/multipart"
 )
 
 // UpdateUserRequest 更新用户信息请求
@@ -19,4 +20,14 @@ type ChangePasswordRequest struct {
 // UserListRequest 用户列表请求
 type UserListRequest struct {
 	response.PageRequest
+}
+
+// UpdateUsernameRequest 修改用户名请求
+type UpdateUsernameRequest struct {
+	Username string `json:"username" binding:"required,min=3,max=50"`
+}
+
+// UploadAvatarRequest 上传头像请求（multipart/form-data）
+type UploadAvatarRequest struct {
+	Avatar *multipart.FileHeader `form:"avatar" binding:"required"`
 }

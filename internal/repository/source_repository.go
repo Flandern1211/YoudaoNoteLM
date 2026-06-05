@@ -15,7 +15,7 @@ func NewSourceRepository(db *gorm.DB) SourceRepository {
 	return &sourceRepository{db: db}
 }
 
-func (r *sourceRepository) FindByID(id uint) (*entity.Source, error) {
+func (r *sourceRepository) FindByID(id int) (*entity.Source, error) {
 	var source entity.Source
 	err := r.db.First(&source, id).Error
 	if err != nil {
@@ -35,15 +35,15 @@ func (r *sourceRepository) Update(source *entity.Source) error {
 	return r.db.Save(source).Error
 }
 
-func (r *sourceRepository) Delete(id uint) error {
+func (r *sourceRepository) Delete(id int) error {
 	return r.db.Delete(&entity.Source{}, id).Error
 }
 
-func (r *sourceRepository) BatchDelete(ids []uint) error {
+func (r *sourceRepository) BatchDelete(ids []int) error {
 	return r.db.Delete(&entity.Source{}, "id IN ?", ids).Error
 }
 
-func (r *sourceRepository) ListByNotebook(userID, notebookID uint, keyword string, offset, limit int) ([]*entity.Source, int64, error) {
+func (r *sourceRepository) ListByNotebook(userID, notebookID int, keyword string, offset, limit int) ([]*entity.Source, int64, error) {
 	var sources []*entity.Source
 	var total int64
 
@@ -64,7 +64,7 @@ func (r *sourceRepository) ListByNotebook(userID, notebookID uint, keyword strin
 	return sources, total, nil
 }
 
-func (r *sourceRepository) UpdateStatus(id uint, status string, errMsg string) error {
+func (r *sourceRepository) UpdateStatus(id int, status string, errMsg string) error {
 	updates := map[string]interface{}{
 		"status": status,
 	}
@@ -74,6 +74,6 @@ func (r *sourceRepository) UpdateStatus(id uint, status string, errMsg string) e
 	return r.db.Model(&entity.Source{}).Where("id = ?", id).Updates(updates).Error
 }
 
-func (r *sourceRepository) SetVectorized(id uint) error {
+func (r *sourceRepository) SetVectorized(id int) error {
 	return r.db.Model(&entity.Source{}).Where("id = ?", id).Update("vectorized", true).Error
 }
