@@ -1,134 +1,176 @@
 package jwt
 
 import (
-	"YoudaoNoteLm/pkg/config"
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// GetParser 获取 JWT Parser（用于解析 token 提取 claims，不做有效性校验）
-func GetParser() *jwt.Parser {
-	return jwt.NewParser()
-}
+// TokenType Token 类型标识
+type TokenType string
 
-// generateJTI 生成唯一的 Token ID
-func generateJTI() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-var (
-	ErrTokenInvalid     = errors.New("token 无效")
-	ErrTokenExpired     = errors.New("token 已过期")
-	ErrTokenTypeInvalid = errors.New("token 类型错误")
+const (
+	AccessToken  TokenType = "access"
+	RefreshToken TokenType = "refresh"
 )
 
-// TokenPair 双 token 结构
-type TokenPair struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+// Claims 自定义 JWT Claims
+type Claims struct {
+	UserID    uint64    `json:"user_id"`
+	Username  string    `json:"username"`
+	TokenType TokenType `json:"token_type"` // 区分 access 和 refresh
+	jwt.RegisteredClaims
 }
 
-// GenerateAccessToken 生成 Access Token（15 分钟）
-func GenerateAccessToken(userID uint, username string) (string, error) {
-	cfg := config.Get().JWT
-	exp := cfg.GetAccessTokenExp()
+// TokenPair 双 Token 对
+type TokenPair struct {
+	AccessToken           string `json:"access_token"`
+	RefreshToken          string `json:"refresh_token"`
+	AccessTokenExpiresAt  int64  `json:"access_token_expires_at"`  // Unix 时间戳
+	RefreshTokenExpiresAt int64  `json:"refresh_token_expires_at"` // Unix 时间戳
+}
 
-	claims := CustomClaims{
+// JWTManager JWT 管理器
+type JWTManager struct {
+	secret          []byte
+	accessTokenExp  time.Duration
+	refreshTokenExp time.Duration
+	issuer          string
+}
+
+// NewJWTManager 创建 JWT 管理器
+// secret: 签名密钥
+// accessTokenExp: Access Token 过期时间
+// refreshTokenExp: Refresh Token 过期时间
+// issuer: 签发者
+func NewJWTManager(secret string, accessTokenExp, refreshTokenExp time.Duration, issuer string) (*JWTManager, error) {
+	if secret == "" {
+		return nil, fmt.Errorf("jwt secret cannot be empty")
+	}
+	if accessTokenExp <= 0 || refreshTokenExp <= 0 {
+		return nil, fmt.Errorf("token expiration must be positive")
+	}
+	if accessTokenExp >= refreshTokenExp {
+		return nil, fmt.Errorf("access token expiration must be less than refresh token expiration")
+	}
+
+	return &JWTManager{
+		secret:          []byte(secret),
+		accessTokenExp:  accessTokenExp,
+		refreshTokenExp: refreshTokenExp,
+		issuer:          issuer,
+	}, nil
+}
+
+// GenerateTokenPair 生成双 Token 对
+func (m *JWTManager) GenerateTokenPair(userID uint64, username string) (*TokenPair, error) {
+	now := time.Now()
+
+	// 生成 Access Token
+	accessClaims := &Claims{
 		UserID:    userID,
 		Username:  username,
 		TokenType: AccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        generateJTI(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    cfg.GetIssuer(),
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTokenExp)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    m.issuer,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(cfg.Secret))
-}
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessTokenStr, err := accessToken.SignedString(m.secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign access token: %w", err)
+	}
 
-// GenerateRefreshToken 生成 Refresh Token（7 天）
-func GenerateRefreshToken(userID uint, username string) (string, error) {
-	cfg := config.Get().JWT
-	exp := cfg.GetRefreshTokenExp()
-
-	claims := CustomClaims{
+	// 生成 Refresh Token
+	refreshClaims := &Claims{
 		UserID:    userID,
 		Username:  username,
 		TokenType: RefreshToken,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        generateJTI(),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    cfg.GetIssuer(),
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTokenExp)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    m.issuer,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(cfg.Secret))
-}
-
-// GenerateTokenPair 生成 Access + Refresh Token 对
-func GenerateTokenPair(userID uint, username string) (*TokenPair, error) {
-	accessToken, err := GenerateAccessToken(userID, username)
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshTokenStr, err := refreshToken.SignedString(m.secret)
 	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := GenerateRefreshToken(userID, username)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to sign refresh token: %w", err)
 	}
 
 	return &TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		AccessToken:           accessTokenStr,
+		RefreshToken:          refreshTokenStr,
+		AccessTokenExpiresAt:  now.Add(m.accessTokenExp).Unix(),
+		RefreshTokenExpiresAt: now.Add(m.refreshTokenExp).Unix(),
 	}, nil
 }
 
-// ParseToken 解析 JWT Token
-func ParseToken(tokenString string) (*CustomClaims, error) {
-	cfg := config.Get().JWT
-
-	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(cfg.Secret), nil
+// ParseToken 解析并验证 Token
+func (m *JWTManager) ParseToken(tokenStr string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// 验证签名算法
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return m.secret, nil
 	})
 
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrTokenExpired
-		}
-		return nil, ErrTokenInvalid
+		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	if claims, ok := token.Claims.(*CustomClaims); ok && token.Valid {
-		return claims, nil
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	return nil, ErrTokenInvalid
+	return claims, nil
 }
 
-// RefreshAccessToken 用 Refresh Token 换取新的 Access Token
-func RefreshAccessToken(refreshTokenString string) (*TokenPair, error) {
-	claims, err := ParseToken(refreshTokenString)
+// ParseAccessToken 解析并验证 Access Token
+func (m *JWTManager) ParseAccessToken(tokenStr string) (*Claims, error) {
+	claims, err := m.ParseToken(tokenStr)
 	if err != nil {
 		return nil, err
 	}
 
-	// 必须是 refresh token
-	if claims.TokenType != RefreshToken {
-		return nil, ErrTokenTypeInvalid
+	if claims.TokenType != AccessToken {
+		return nil, fmt.Errorf("expected access token, got %s", claims.TokenType)
 	}
 
-	return GenerateTokenPair(claims.UserID, claims.Username)
+	return claims, nil
+}
+
+// ParseRefreshToken 解析并验证 Refresh Token
+func (m *JWTManager) ParseRefreshToken(tokenStr string) (*Claims, error) {
+	claims, err := m.ParseToken(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if claims.TokenType != RefreshToken {
+		return nil, fmt.Errorf("expected refresh token, got %s", claims.TokenType)
+	}
+
+	return claims, nil
+}
+
+// RefreshAccessToken 使用 Refresh Token 刷新，获取新的 Token 对
+func (m *JWTManager) RefreshAccessToken(refreshTokenStr string) (*TokenPair, error) {
+	// 验证 Refresh Token
+	claims, err := m.ParseRefreshToken(refreshTokenStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	// 生成新的 Token 对
+	return m.GenerateTokenPair(claims.UserID, claims.Username)
 }

@@ -3,78 +3,104 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 var globalConfig *Config
 
-// Load 加载配置文件
-func Load(configPath string) (*Config, error) {
-	v := viper.New()
-
-	// 设置配置文件路径
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("config")
-		v.SetConfigType("yaml")
-		v.AddConfigPath("./configs")
-		v.AddConfigPath(".")
-	}
-
-	// 环境变量前缀
-	v.SetEnvPrefix("CLOUDQUE")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// 读取配置文件
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
-	}
-
-	// 解析配置
-	config := &Config{}
-	if err := v.Unmarshal(config); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
-	}
-
-	// 从环境变量覆盖敏感配置
-	if val := os.Getenv("MYSQL_PASSWORD"); val != "" {
-		config.Database.MySQL.Password = val
-	}
-	if val := os.Getenv("REDIS_PASSWORD"); val != "" {
-		config.Database.Redis.Password = val
-	}
-	if val := os.Getenv("JWT_SECRET"); val != "" {
-		config.JWT.Secret = val
-	}
-	if val := os.Getenv("EMAIL_PASSWORD"); val != "" {
-		config.Email.Password = val
-	}
-	// 设置默认发件人地址
-	if config.Email.From == "" {
-		config.Email.From = config.Email.Username
-	}
-
-	globalConfig = config
-	return config, nil
-}
-
-// Get 获取全局配置
-func Get() *Config {
-	if globalConfig == nil {
-		panic("配置未初始化，请先调用 Load() 加载配置")
-	}
+// GetConfig 获取全局配置
+func GetConfig() *Config {
 	return globalConfig
 }
 
-// MustLoad 加载配置，失败时 panic
-func MustLoad(configPath string) *Config {
-	config, err := Load(configPath)
+// LoadConfig 从 YAML 文件加载配置
+func LoadConfig(path string) (*Config, error) {
+	var config Config
+
+	data, err := os.ReadFile(path)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// 设置默认值
+	setDefaults(&config)
+
+	// 验证配置
+	if err := validate(&config); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	globalConfig = &config
+	return &config, nil
+}
+
+// MustLoadConfig 加载配置，失败则 panic
+func MustLoadConfig(path string) *Config {
+	config, err := LoadConfig(path)
+	if err != nil {
+		panic(fmt.Sprintf("failed to load config: %v", err))
 	}
 	return config
+}
+
+// setDefaults 设置默认值
+func setDefaults(config *Config) {
+	if config.Server.Host == "" {
+		config.Server.Host = "0.0.0.0"
+	}
+	if config.Server.Port == 0 {
+		config.Server.Port = 8080
+	}
+	if config.Database.Host == "" {
+		config.Database.Host = "localhost"
+	}
+	if config.Database.Port == 0 {
+		config.Database.Port = 3306
+	}
+	if config.Database.Charset == "" {
+		config.Database.Charset = "utf8mb4"
+	}
+	if config.Database.Loc == "" {
+		config.Database.Loc = "Local"
+	}
+	if config.Redis.Host == "" {
+		config.Redis.Host = "localhost"
+	}
+	if config.Redis.Port == 0 {
+		config.Redis.Port = 6379
+	}
+	if config.Milvus.Host == "" {
+		config.Milvus.Host = "localhost"
+	}
+	if config.Milvus.Port == 0 {
+		config.Milvus.Port = 19530
+	}
+	if config.JWT.AccessTokenExp == "" {
+		config.JWT.AccessTokenExp = "15m" // 15 分钟
+	}
+	if config.JWT.RefreshTokenExp == "" {
+		config.JWT.RefreshTokenExp = "168h" // 7 天
+	}
+	if config.MCP.MarkItDownURL == "" {
+		config.MCP.MarkItDownURL = "http://localhost:3001"
+	}
+}
+
+// validate 验证配置
+func validate(config *Config) error {
+	if config.Database.User == "" {
+		return fmt.Errorf("database user is required")
+	}
+	if config.Database.DBName == "" {
+		return fmt.Errorf("database name is required")
+	}
+	if config.JWT.Secret == "" {
+		return fmt.Errorf("jwt secret is required")
+	}
+	return nil
 }

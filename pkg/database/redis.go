@@ -1,51 +1,60 @@
 package database
 
 import (
-	"YoudaoNoteLm/pkg/config"
-	"YoudaoNoteLm/pkg/logger"
 	"context"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
+
+	"MindTrace/pkg/config"
 )
 
-var redisClient *redis.Client
+var (
+	redisClient *redis.Client
+	redisOnce   sync.Once
+)
 
-// InitRedis 初始化 Redis 连接
-func InitRedis(cfg *config.RedisConfig) (*redis.Client, error) {
-	client := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Password: cfg.Password,
-		DB:       cfg.DB,
-		PoolSize: cfg.PoolSize,
-	})
-
-	// 测试连接
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		logger.Error("Redis 连接失败", zap.Error(err))
-		return nil, fmt.Errorf("Redis 连接失败: %w", err)
-	}
-
-	redisClient = client
-	logger.Info("Redis 连接成功",
-		zap.String("addr", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)),
-		zap.Int("db", cfg.DB),
-	)
-
-	return client, nil
+// GetRedisClient 获取 Redis 客户端（单例）
+func GetRedisClient() *redis.Client {
+	return redisClient
 }
 
-// GetRedis 获取 Redis 实例
-func GetRedis() *redis.Client {
-	if redisClient == nil {
-		panic("Redis 未初始化")
+// InitRedis 初始化 Redis 客户端
+func InitRedis(cfg *config.RedisConfig) (*redis.Client, error) {
+	var initErr error
+
+	redisOnce.Do(func() {
+		client := redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+			Password: cfg.Password,
+			DB:       cfg.DB,
+		})
+
+		// 测试连接
+		ctx := context.Background()
+		if err := client.Ping(ctx).Err(); err != nil {
+			initErr = fmt.Errorf("failed to connect to redis: %w", err)
+			return
+		}
+
+		redisClient = client
+	})
+
+	if initErr != nil {
+		return nil, initErr
 	}
-	return redisClient
+
+	return redisClient, nil
+}
+
+// MustInitRedis 初始化 Redis，失败则 panic
+func MustInitRedis(cfg *config.RedisConfig) *redis.Client {
+	client, err := InitRedis(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to init redis: %v", err))
+	}
+	return client
 }
 
 // CloseRedis 关闭 Redis 连接
