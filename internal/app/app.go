@@ -181,7 +181,7 @@ func (a *App) initDependencies() {
 	)
 
 	// 创建 ConfigService（配置路由降级）
-	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, a.cfg.External.Search)
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache)
 
 	// 创建搜索 Agent（LLM 客户端在每次请求时通过 ConfigService 获取）
 	searchAgent := searchAgent.NewSearchAgent(configSvc, importerSvc)

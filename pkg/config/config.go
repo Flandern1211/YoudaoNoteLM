@@ -18,13 +18,6 @@ type ExternalConfig struct {
 	MarkItDown MarkItDownConfig `mapstructure:"markitdown"`
 	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
-	Search     SearchConfig     `mapstructure:"search"`
-}
-
-// SearchConfig 搜索引擎配置（系统级兜底）
-type SearchConfig struct {
-	Provider string `mapstructure:"provider"` // bing / duckduckgo
-	APIKey   string `mapstructure:"api_key"`  // Bing API Key
 }
 
 // MarkItDownConfig 文档转换服务配置

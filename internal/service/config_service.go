@@ -11,7 +11,6 @@ import (
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/cache"
-	"YoudaoNoteLm/pkg/config"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
 
@@ -25,7 +24,7 @@ const (
 
 // ConfigService 配置路由服务接口
 type ConfigService interface {
-	// GetSearchEngine 获取用户的搜索引擎（用户配置 → 系统内置 → DuckDuckGo 兜底）
+	// GetSearchEngine 获取搜索引擎（sys_config 配置的 SearXNG）
 	GetSearchEngine(userID uint) (external.SearchEngine, error)
 	// GetLLMClient 获取用户的 LLM 客户端（用户必须配置，无降级）
 	GetLLMClient(userID uint) (external.LLMClient, error)
@@ -40,7 +39,6 @@ type configService struct {
 	sysConfigRepo  repository.SysConfigRepository
 	userConfigRepo repository.UserConfigRepository
 	cache          *cache.Cache
-	searchCfg      config.SearchConfig
 }
 
 // NewConfigService 创建配置服务
@@ -48,13 +46,11 @@ func NewConfigService(
 	sysConfigRepo repository.SysConfigRepository,
 	userConfigRepo repository.UserConfigRepository,
 	cache *cache.Cache,
-	searchCfg config.SearchConfig,
 ) ConfigService {
 	return &configService{
 		sysConfigRepo:  sysConfigRepo,
 		userConfigRepo: userConfigRepo,
 		cache:          cache,
-		searchCfg:      searchCfg,
 	}
 }
 
@@ -70,59 +66,36 @@ func sysConfigCacheKey(group string) string {
 
 // --- 查询（带缓存） ---
 
-// GetSearchEngine 获取用户的搜索引擎
+// GetSearchEngine 获取搜索引擎（sys_config 配置的 SearXNG）
 func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, error) {
 	ctx := context.Background()
 
-	// 1. 查用户搜索配置（先查缓存）
-	cacheKey := userConfigCacheKey(userID, "search")
-	var userCfg entity.UserConfig
-	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
-		logger.Debug("用户搜索配置缓存命中", zap.Uint("user_id", userID))
-		return external.NewCustomEngine(userCfg.Name, userCfg.APIURL, userCfg.APIKey), nil
-	}
-
-	// 缓存未命中，查 DB
-	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "search")
-	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
-		// 回填缓存
-		_ = s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL)
-		return external.NewCustomEngine(userCfgPtr.Name, userCfgPtr.APIURL, userCfgPtr.APIKey), nil
-	}
-
-	// 2. 降级到系统内置配置（先查缓存）
+	// 查 sys_config 中 search 分组的配置（先查缓存）
 	sysCacheKey := sysConfigCacheKey("search")
 	var builtins []*entity.SysConfig
 	if err := s.cache.Get(ctx, sysCacheKey, &builtins); err == nil {
-		for _, builtin := range builtins {
-			if builtin.Enabled {
-				logger.Info("使用系统内置搜索配置（缓存）", zap.String("key", builtin.ConfigKey))
-				return external.NewCustomEngine(builtin.ConfigKey, builtin.ConfigValue, ""), nil
+		for _, cfg := range builtins {
+			if cfg.Enabled && cfg.ConfigKey == "searxng" {
+				logger.Info("使用 SearXNG 搜索引擎（缓存）", zap.String("url", cfg.ConfigValue))
+				return external.NewSearXNGEngine(cfg.ConfigValue), nil
 			}
 		}
 	} else {
 		// 缓存未命中，查 DB
+		var err error
 		builtins, err = s.sysConfigRepo.FindByGroup("search")
 		if err == nil {
 			_ = s.cache.Set(ctx, sysCacheKey, builtins, sysConfigTTL)
-			for _, builtin := range builtins {
-				if builtin.Enabled {
-					logger.Info("使用系统内置搜索配置", zap.String("key", builtin.ConfigKey))
-					return external.NewCustomEngine(builtin.ConfigKey, builtin.ConfigValue, ""), nil
+			for _, cfg := range builtins {
+				if cfg.Enabled && cfg.ConfigKey == "searxng" {
+					logger.Info("使用 SearXNG 搜索引擎", zap.String("url", cfg.ConfigValue))
+					return external.NewSearXNGEngine(cfg.ConfigValue), nil
 				}
 			}
 		}
 	}
 
-	// 3. 系统配置的搜索引擎（Bing 等）
-	if s.searchCfg.Provider == "bing" && s.searchCfg.APIKey != "" {
-		logger.Info("使用系统配置的 Bing 搜索引擎")
-		return external.NewBingEngine(s.searchCfg.APIKey), nil
-	}
-
-	// 4. DuckDuckGo 兜底（国内不可用，仅作最后手段）
-	logger.Info("使用 DuckDuckGo 兜底搜索引擎（注意：国内网络可能不可用）")
-	return external.NewDuckDuckGoEngine(), nil
+	return nil, bizerrors.New(bizerrors.CodeInternalServiceError, "搜索引擎未配置，请在系统配置中添加 SearXNG")
 }
 
 // GetLLMClient 获取用户的 LLM 客户端（用户必须配置，无系统降级）
