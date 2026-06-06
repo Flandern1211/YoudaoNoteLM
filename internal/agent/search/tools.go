@@ -11,6 +11,8 @@ import (
 	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/logger"
 
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/components/tool/utils"
 	"go.uber.org/zap"
 )
 
@@ -35,99 +37,76 @@ func stripCodeBlock(s string) string {
 
 // ========== web_search 工具 ==========
 
-type webSearchTool struct {
-	configService service.ConfigService
+// WebSearchInput web_search 工具输入
+type WebSearchInput struct {
+	Query string `json:"query" jsonschema_description:"搜索关键词"`
+	Limit int    `json:"limit" jsonschema_description:"返回结果数量，默认10"`
 }
 
-func NewWebSearchTool(configService service.ConfigService) Tool {
-	return &webSearchTool{configService: configService}
+// WebSearchOutput web_search 工具输出
+type WebSearchOutput struct {
+	Results any `json:"results"`
 }
 
-func (t *webSearchTool) Name() string { return "web_search" }
-func (t *webSearchTool) Description() string {
-	return "搜索网络内容。输入搜索关键词，返回搜索结果列表（标题、URL、摘要）"
-}
-func (t *webSearchTool) Parameters() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"query": map[string]any{
-				"type":        "string",
-				"description": "搜索关键词",
-			},
-			"limit": map[string]any{
-				"type":        "integer",
-				"description": "返回结果数量，默认10",
-			},
+// NewWebSearchTool 创建 web_search 工具
+func NewWebSearchTool(configService service.ConfigService) (tool.InvokableTool, error) {
+	return utils.InferTool("web_search", "搜索网络内容。输入搜索关键词，返回搜索结果列表（标题、URL、摘要）",
+		func(ctx context.Context, input *WebSearchInput) (*WebSearchOutput, error) {
+			limit := input.Limit
+			if limit <= 0 {
+				limit = 10
+			}
+
+			userID := GetUserID(ctx)
+			engine, err := configService.GetSearchEngine(userID)
+			if err != nil {
+				return nil, err
+			}
+
+			results, err := engine.Search(input.Query, limit)
+			if err != nil {
+				return nil, fmt.Errorf("搜索失败: %w", err)
+			}
+
+			logger.Info("web_search 执行成功",
+				zap.String("query", input.Query),
+				zap.Int("results", len(results)),
+			)
+
+			return &WebSearchOutput{Results: results}, nil
 		},
-		"required": []string{"query"},
-	}
-}
-
-func (t *webSearchTool) Execute(ctx context.Context, params map[string]any) (any, error) {
-	query, _ := params["query"].(string)
-	limit := 10
-	if v, ok := params["limit"]; ok {
-		if n, ok := v.(float64); ok {
-			limit = int(n)
-		}
-	}
-
-	userID := GetUserID(ctx)
-	engine, err := t.configService.GetSearchEngine(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := engine.Search(query, limit)
-	if err != nil {
-		return nil, fmt.Errorf("搜索失败: %w", err)
-	}
-
-	logger.Info("web_search 执行成功",
-		zap.String("query", query),
-		zap.Int("results", len(results)),
 	)
-
-	return map[string]any{"results": results}, nil
 }
 
 // ========== analyze_results 工具 ==========
 
-type analyzeResultsTool struct {
-	llmClient external.LLMClient
+// AnalyzeResultsInput analyze_results 工具输入
+type AnalyzeResultsInput struct {
+	Results    any    `json:"results" jsonschema_description:"搜索结果列表"`
+	UserIntent string `json:"user_intent" jsonschema_description:"用户的搜索意图描述"`
 }
 
-func NewAnalyzeResultsTool(llmClient external.LLMClient) Tool {
-	return &analyzeResultsTool{llmClient: llmClient}
+// AnalyzeRankedItem 分析后的结果项
+type AnalyzeRankedItem struct {
+	Title   string  `json:"title"`
+	URL     string  `json:"url"`
+	Snippet string  `json:"snippet"`
+	Score   float64 `json:"score"`
+	Reason  string  `json:"reason"`
 }
 
-func (t *analyzeResultsTool) Name() string { return "analyze_results" }
-func (t *analyzeResultsTool) Description() string {
-	return "分析搜索结果的相关性和质量。输入搜索结果列表和用户意图，返回带评分和推荐理由的排序结果"
-}
-func (t *analyzeResultsTool) Parameters() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"results": map[string]any{
-				"type":        "array",
-				"description": "搜索结果列表",
-			},
-			"user_intent": map[string]any{
-				"type":        "string",
-				"description": "用户的搜索意图描述",
-			},
-		},
-		"required": []string{"results", "user_intent"},
-	}
+// AnalyzeResultsOutput analyze_results 工具输出
+type AnalyzeResultsOutput struct {
+	Ranked []AnalyzeRankedItem `json:"ranked"`
 }
 
-func (t *analyzeResultsTool) Execute(ctx context.Context, params map[string]any) (any, error) {
-	resultsJSON, _ := json.Marshal(params["results"])
-	userIntent, _ := params["user_intent"].(string)
+// NewAnalyzeResultsTool 创建 analyze_results 工具
+func NewAnalyzeResultsTool(llmClient external.LLMClient) (tool.InvokableTool, error) {
+	return utils.InferTool("analyze_results", "分析搜索结果的相关性和质量。输入搜索结果列表和用户意图，返回带评分和推荐理由的排序结果",
+		func(ctx context.Context, input *AnalyzeResultsInput) (*AnalyzeResultsOutput, error) {
+			resultsJSON, _ := json.Marshal(input.Results)
 
-	prompt := fmt.Sprintf(`分析以下搜索结果与用户意图的相关性和质量。
+			prompt := fmt.Sprintf(`分析以下搜索结果与用户意图的相关性和质量。
 
 用户意图：%s
 
@@ -141,157 +120,118 @@ func (t *analyzeResultsTool) Execute(ctx context.Context, params map[string]any)
     {"title": "...", "url": "...", "snippet": "...", "score": 8.5, "reason": "..."}
   ]
 }
-只返回JSON，不要其他内容。`, userIntent, string(resultsJSON))
+只返回JSON，不要其他内容。`, input.UserIntent, string(resultsJSON))
 
-	resp, err := t.llmClient.Chat([]external.Message{
-		{Role: "user", Content: prompt},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("LLM分析失败: %w", err)
-	}
+			resp, err := llmClient.Chat([]external.Message{
+				{Role: "user", Content: prompt},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("LLM分析失败: %w", err)
+			}
 
-	// 解析 LLM 返回的 JSON
-	var result struct {
-		Ranked []struct {
-			Title   string  `json:"title"`
-			URL     string  `json:"url"`
-			Snippet string  `json:"snippet"`
-			Score   float64 `json:"score"`
-			Reason  string  `json:"reason"`
-		} `json:"ranked"`
-	}
-	cleaned := stripCodeBlock(resp)
-	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
-		logger.Warn("解析analyze_results LLM响应失败", zap.String("raw", resp), zap.Error(err))
-		return map[string]any{"raw": resp}, nil
-	}
+			// 解析 LLM 返回的 JSON
+			var result AnalyzeResultsOutput
+			cleaned := stripCodeBlock(resp)
+			if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+				logger.Warn("解析analyze_results LLM响应失败", zap.String("raw", resp), zap.Error(err))
+				// 返回空结果而不是错误
+				return &AnalyzeResultsOutput{}, nil
+			}
 
-	logger.Info("analyze_results 执行成功", zap.Int("ranked", len(result.Ranked)))
-	return result, nil
+			logger.Info("analyze_results 执行成功", zap.Int("ranked", len(result.Ranked)))
+			return &result, nil
+		},
+	)
 }
 
 // ========== refine_query 工具 ==========
 
-type refineQueryTool struct {
-	llmClient external.LLMClient
+// RefineQueryInput refine_query 工具输入
+type RefineQueryInput struct {
+	OriginalQuery string `json:"original_query" jsonschema_description:"原始搜索关键词"`
+	Context       string `json:"context" jsonschema_description:"上下文信息，如之前搜索结果的质量反馈"`
 }
 
-func NewRefineQueryTool(llmClient external.LLMClient) Tool {
-	return &refineQueryTool{llmClient: llmClient}
+// RefineQueryOutput refine_query 工具输出
+type RefineQueryOutput struct {
+	RefinedQueries []string `json:"refined_queries"`
 }
 
-func (t *refineQueryTool) Name() string { return "refine_query" }
-func (t *refineQueryTool) Description() string {
-	return "优化搜索关键词。输入原始搜索词和上下文信息，返回优化后的关键词列表，每个关键词从不同角度切入"
-}
-func (t *refineQueryTool) Parameters() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"original_query": map[string]any{
-				"type":        "string",
-				"description": "原始搜索关键词",
-			},
-			"context": map[string]any{
-				"type":        "string",
-				"description": "上下文信息，如之前搜索结果的质量反馈",
-			},
-		},
-		"required": []string{"original_query"},
-	}
-}
+// NewRefineQueryTool 创建 refine_query 工具
+func NewRefineQueryTool(llmClient external.LLMClient) (tool.InvokableTool, error) {
+	return utils.InferTool("refine_query", "优化搜索关键词。输入原始搜索词和上下文信息，返回优化后的关键词列表，每个关键词从不同角度切入",
+		func(ctx context.Context, input *RefineQueryInput) (*RefineQueryOutput, error) {
+			contextInfo := input.Context
+			if contextInfo == "" {
+				contextInfo = "无额外上下文"
+			}
 
-func (t *refineQueryTool) Execute(ctx context.Context, params map[string]any) (any, error) {
-	original, _ := params["original_query"].(string)
-	contextInfo, _ := params["context"].(string)
-	if contextInfo == "" {
-		contextInfo = "无额外上下文"
-	}
-
-	prompt := fmt.Sprintf(`用户想搜索"%s"，背景：%s。
+			prompt := fmt.Sprintf(`用户想搜索"%s"，背景：%s。
 请提供3个优化后的搜索关键词，每个更精准或从不同角度切入。
 返回JSON格式：
 {"refined_queries": ["关键词1", "关键词2", "关键词3"]}
-只返回JSON，不要其他内容。`, original, contextInfo)
+只返回JSON，不要其他内容。`, input.OriginalQuery, contextInfo)
 
-	resp, err := t.llmClient.Chat([]external.Message{
-		{Role: "user", Content: prompt},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("LLM优化关键词失败: %w", err)
-	}
+			resp, err := llmClient.Chat([]external.Message{
+				{Role: "user", Content: prompt},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("LLM优化关键词失败: %w", err)
+			}
 
-	var result struct {
-		RefinedQueries []string `json:"refined_queries"`
-	}
-	cleaned := stripCodeBlock(resp)
-	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
-		logger.Warn("解析refine_query LLM响应失败", zap.String("raw", resp), zap.Error(err))
-		return map[string]any{"raw": resp}, nil
-	}
+			var result RefineQueryOutput
+			cleaned := stripCodeBlock(resp)
+			if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+				logger.Warn("解析refine_query LLM响应失败", zap.String("raw", resp), zap.Error(err))
+				// 返回原始查询作为降级
+				return &RefineQueryOutput{RefinedQueries: []string{input.OriginalQuery}}, nil
+			}
 
-	logger.Info("refine_query 执行成功", zap.Strings("queries", result.RefinedQueries))
-	return result, nil
+			logger.Info("refine_query 执行成功", zap.Strings("queries", result.RefinedQueries))
+			return &result, nil
+		},
+	)
 }
 
 // ========== import_urls 工具 ==========
 
-type importURLsTool struct {
-	importer service.ImporterService
+// ImportURLsInput import_urls 工具输入
+type ImportURLsInput struct {
+	URLs []string `json:"urls" jsonschema_description:"要导入的URL列表"`
 }
 
-func NewImportURLsTool(importer service.ImporterService) Tool {
-	return &importURLsTool{importer: importer}
+// ImportURLsOutput import_urls 工具输出
+type ImportURLsOutput struct {
+	TaskID   string `json:"task_id"`
+	URLCount int    `json:"url_count"`
 }
 
-func (t *importURLsTool) Name() string { return "import_urls" }
-func (t *importURLsTool) Description() string {
-	return "批量导入URL的网页内容到资料库。输入URL列表，返回导入任务ID"
-}
-func (t *importURLsTool) Parameters() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"urls": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "要导入的URL列表",
-			},
+// NewImportURLsTool 创建 import_urls 工具
+func NewImportURLsTool(importer service.ImporterService) (tool.InvokableTool, error) {
+	return utils.InferTool("import_urls", "批量导入URL的网页内容到资料库。输入URL列表，返回导入任务ID",
+		func(ctx context.Context, input *ImportURLsInput) (*ImportURLsOutput, error) {
+			if len(input.URLs) == 0 {
+				return nil, fmt.Errorf("URL列表为空")
+			}
+
+			userID := GetUserID(ctx)
+			notebookID := GetNotebookID(ctx)
+
+			taskID, err := importer.ImportSearchResults(userID, notebookID, input.URLs)
+			if err != nil {
+				return nil, fmt.Errorf("导入失败: %w", err)
+			}
+
+			logger.Info("import_urls 执行成功",
+				zap.Uint("user_id", userID),
+				zap.Int("url_count", len(input.URLs)),
+				zap.String("task_id", taskID),
+			)
+
+			return &ImportURLsOutput{
+				TaskID:   taskID,
+				URLCount: len(input.URLs),
+			}, nil
 		},
-		"required": []string{"urls"},
-	}
-}
-
-func (t *importURLsTool) Execute(ctx context.Context, params map[string]any) (any, error) {
-	rawURLs, ok := params["urls"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("urls 参数格式错误")
-	}
-
-	urls := make([]string, 0, len(rawURLs))
-	for _, u := range rawURLs {
-		if s, ok := u.(string); ok {
-			urls = append(urls, s)
-		}
-	}
-
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("URL列表为空")
-	}
-
-	userID := GetUserID(ctx)
-	notebookID := GetNotebookID(ctx)
-
-	taskID, err := t.importer.ImportSearchResults(userID, notebookID, urls)
-	if err != nil {
-		return nil, fmt.Errorf("导入失败: %w", err)
-	}
-
-	logger.Info("import_urls 执行成功",
-		zap.Uint("user_id", userID),
-		zap.Int("url_count", len(urls)),
-		zap.String("task_id", taskID),
 	)
-
-	return map[string]any{"task_id": taskID, "url_count": len(urls)}, nil
 }

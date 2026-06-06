@@ -70,6 +70,11 @@ func Get() *Config {
 	return globalConfig
 }
 
+// SetForTest 测试专用：直接设置全局配置（跳过文件加载）
+func SetForTest(cfg *Config) {
+	globalConfig = cfg
+}
+
 // MustLoad 加载配置，失败时 panic
 func MustLoad(configPath string) *Config {
 	config, err := Load(configPath)

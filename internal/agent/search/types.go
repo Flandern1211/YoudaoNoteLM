@@ -3,14 +3,6 @@ package search
 
 import "context"
 
-// Tool 工具接口（Eino Tool 适配）
-type Tool interface {
-	Name() string
-	Description() string
-	Parameters() map[string]any
-	Execute(ctx context.Context, params map[string]any) (any, error)
-}
-
 // contextKey 工具调用上下文（从 context.Context 传递 userID 等信息）
 type contextKey string
 

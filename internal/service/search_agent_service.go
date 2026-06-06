@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"YoudaoNoteLm/internal/model/dto/response"
-	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/pkg/logger"
 
 	"go.uber.org/zap"
@@ -45,11 +44,11 @@ func (s *searchAgentService) Search(userID, notebookID uint, query string) (*res
 	return parseAgentResult(result.Content, result.SearchRounds)
 }
 
-// ImportFromURL URL 直接导入
-func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) (*entity.Source, error) {
+// ImportFromURL URL 直接导入（返回任务 ID）
+func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) (string, error) {
 	taskID, err := s.importer.ImportSearchResults(userID, notebookID, []string{url})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	logger.Info("URL导入任务已创建",
@@ -58,8 +57,7 @@ func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) 
 		zap.String("task_id", taskID),
 	)
 
-	// 异步任务，前端通过 taskID 轮询获取结果
-	return nil, nil
+	return taskID, nil
 }
 
 // ImportSearchResults 批量导入
@@ -69,10 +67,21 @@ func (s *searchAgentService) ImportSearchResults(userID, notebookID uint, urls [
 
 // parseAgentResult 解析 Agent 返回的内容为 SearchResponse
 func parseAgentResult(content string, searchRounds int) (*response.SearchResponse, error) {
-	// 尝试从 Agent 回复中提取 JSON 结果
-	var result response.SearchResponse
+	// 尝试从 Agent 回复中提取 JSON 代码块
+	if jsonBlock := extractJSONBlock(content); jsonBlock != "" {
+		var result response.SearchResponse
+		if err := json.Unmarshal([]byte(jsonBlock), &result); err == nil {
+			result.SearchRounds = searchRounds
+			// summary 如果为空，用前面的文本
+			if result.Summary == "" {
+				result.Summary = extractTextBeforeJSON(content)
+			}
+			return &result, nil
+		}
+	}
 
 	// 尝试直接解析整个内容为 JSON
+	var result response.SearchResponse
 	if err := json.Unmarshal([]byte(content), &result); err == nil {
 		return &result, nil
 	}
@@ -95,5 +104,68 @@ func parseAgentResult(content string, searchRounds int) (*response.SearchRespons
 		}
 	}
 
+	// 如果没有提取到 URL，尝试从 Markdown 链接中提取
+	if len(result.Results) == 0 {
+		for _, line := range lines {
+			if idx := strings.Index(line, "]("); idx != -1 {
+				start := idx + 2
+				end := strings.Index(line[start:], ")")
+				if end != -1 {
+					url := line[start : start+end]
+					if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+						result.Results = append(result.Results, response.SearchResultItem{
+							URL: url,
+						})
+					}
+				}
+			}
+		}
+	}
+
 	return &result, nil
+}
+
+// extractJSONBlock 从文本中提取 ```json ... ``` 代码块
+func extractJSONBlock(content string) string {
+	startMarker := "```json"
+	endMarker := "```"
+
+	startIdx := strings.Index(content, startMarker)
+	if startIdx == -1 {
+		// 尝试 ```  开头
+		startMarker = "```"
+		startIdx = strings.Index(content, startMarker)
+		if startIdx == -1 {
+			return ""
+		}
+		// 跳过 ```\n
+		startIdx += len(startMarker)
+		if startIdx < len(content) && content[startIdx] == '\n' {
+			startIdx++
+		}
+	} else {
+		startIdx += len(startMarker)
+		if startIdx < len(content) && content[startIdx] == '\n' {
+			startIdx++
+		}
+	}
+
+	endIdx := strings.Index(content[startIdx:], endMarker)
+	if endIdx == -1 {
+		return ""
+	}
+
+	return strings.TrimSpace(content[startIdx : startIdx+endIdx])
+}
+
+// extractTextBeforeJSON 提取 JSON 代码块之前的文本
+func extractTextBeforeJSON(content string) string {
+	idx := strings.Index(content, "```json")
+	if idx == -1 {
+		idx = strings.Index(content, "```")
+	}
+	if idx == -1 {
+		return content
+	}
+	return strings.TrimSpace(content[:idx])
 }

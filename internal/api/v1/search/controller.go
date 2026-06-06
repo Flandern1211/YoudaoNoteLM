@@ -14,8 +14,8 @@ import (
 
 // Controller 搜索控制器
 type Controller struct {
-	searchService    service.SearchAgentService
-	tokenBlacklist   service.TokenBlacklistService
+	searchService  service.SearchAgentService
+	tokenBlacklist service.TokenBlacklistService
 }
 
 // NewController 创建搜索控制器
@@ -62,13 +62,13 @@ func (ctrl *Controller) ImportFromURL(c *gin.Context) {
 		return
 	}
 
-	source, err := ctrl.searchService.ImportFromURL(userID, uint(nbID), req.URL)
+	taskID, err := ctrl.searchService.ImportFromURL(userID, uint(nbID), req.URL)
 	if err != nil {
 		response.BizError(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{"source": source})
+	response.Success(c, gin.H{"task_id": taskID})
 }
 
 // ImportSearchResults 批量导入搜索结果
