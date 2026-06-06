@@ -151,6 +151,7 @@ func (a *App) initDependencies() {
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	notebookSvc := service.NewNotebookService(notebookRepo)
+	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建外部服务客户端
 	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
@@ -195,6 +196,7 @@ func (a *App) initDependencies() {
 
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由
@@ -254,18 +256,11 @@ func (a *App) gracefulShutdown() {
 	}
 
 	// 关闭数据库连接
-	if err := database.CloseMySQL(); err != nil {
-		logger.Error("关闭 MySQL 连接失败", zap.Error(err))
-	}
-	if err := database.CloseRedis(); err != nil {
-		logger.Error("关闭 Redis 连接失败", zap.Error(err))
-	}
+	_ = database.CloseMySQL()
+	_ = database.CloseRedis()
 
 	// 同步日志
-	if err := logger.Sync(); err != nil {
-		// 日志同步失败无法记录，只能忽略
-		_ = err
-	}
+	_ = logger.Sync()
 
 	logger.Info("服务器已关闭")
 	logger.Info("=========================================")
