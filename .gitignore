@@ -55,3 +55,17 @@ claude.md
 # docs
 docs/
 /docs/
+
+ffmpeg.zip
+
+
+CLAUDE.local.md
+
+
+markitdown_service
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+*.m4a
