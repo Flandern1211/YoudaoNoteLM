@@ -139,6 +139,8 @@ func (a *App) initDependencies() {
 	userRepo := repository.NewUserRepository(a.mysqlDB)
 	notebookRepo := repository.NewNotebookRepository(a.mysqlDB)
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
+	sysConfigRepo := repository.NewSysConfigRepository(a.mysqlDB)
+	userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
 
 	// 创建 Service
 	emailSvc := service.NewEmailService()
@@ -177,9 +179,17 @@ func (a *App) initDependencies() {
 		sourceRepo, importTaskCache, audioPreviewCache, nil,
 	)
 
+	// 创建后台管理服务
+	adminSvc := service.NewAdminService(userRepo, sysConfigRepo)
+
+	// 创建用户配置服务
+	userCfgSvc := service.NewUserConfigService(userConfigRepo)
+
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, captchaSvc, tokenBlacklistSvc)
-	a.router = api.NewRouter(userSvc, authSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(
+		userSvc, authSvc, notebookSvc, sourceSvc, importerSvc,
+		adminSvc, userCfgSvc, captchaSvc, tokenBlacklistSvc,
+	)
 }
 
 // initRouter 初始化路由

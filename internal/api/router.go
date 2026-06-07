@@ -1,11 +1,13 @@
 package api
 
 import (
+	"YoudaoNoteLm/internal/api/v1/admin"
 	"YoudaoNoteLm/internal/api/v1/auth"
-	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/importn"
+	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
+	"YoudaoNoteLm/internal/api/v1/user_config"
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/service"
 	"github.com/gin-gonic/gin"
@@ -19,6 +21,8 @@ type Router struct {
 	sourceCtrl     *source.Controller
 	tokenBlacklist service.TokenBlacklistService
 	importCtrl     *importn.Controller
+	adminCtrl      *admin.Controller
+	userCfgCtrl    *user_config.Controller
 }
 
 // NewRouter 创建路由
@@ -28,6 +32,8 @@ func NewRouter(
 	notebookService service.NotebookService,
 	sourceService service.SourceService,
 	importerService service.ImporterService,
+	adminService service.AdminService,
+	userConfigService service.UserConfigService,
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
 ) *Router {
@@ -38,6 +44,8 @@ func NewRouter(
 		sourceCtrl:     source.NewController(sourceService, tokenBlacklist),
 		tokenBlacklist: tokenBlacklist,
 		importCtrl:     importn.NewController(importerService),
+		adminCtrl:      admin.NewController(adminService),
+		userCfgCtrl:    user_config.NewController(userConfigService),
 	}
 }
 
@@ -76,5 +84,11 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 导入路由（需认证）
 		r.importCtrl.RegisterRoutes(v1, r.tokenBlacklist)
+
+		// 后台管理路由（需认证）
+		r.adminCtrl.RegisterRoutes(v1)
+
+		// 用户配置路由（需认证）
+		r.userCfgCtrl.RegisterRoutes(v1)
 	}
 }
