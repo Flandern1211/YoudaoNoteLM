@@ -89,7 +89,9 @@ func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
 	// MarkItDown 服务的 /convert_url 使用 Form 表单
 	formBody := &bytes.Buffer{}
 	writer := multipart.NewWriter(formBody)
-	_ = writer.WriteField("url", url)
+	if err := writer.WriteField("url", url); err != nil {
+		return "", fmt.Errorf("写入URL表单字段失败: %w", err)
+	}
 	if err := writer.Close(); err != nil {
 		return "", fmt.Errorf("关闭writer失败: %w", err)
 	}

@@ -33,5 +33,7 @@ type CaptchaData struct {
 	Slider       string `json:"slider"`         // 滑块图 base64
 	SliderSize   int    `json:"slider_size"`    // 滑块大小（像素）
 	BgWidth      int    `json:"bg_width"`       // 背景图宽度（像素）
+	BgHeight     int    `json:"bg_height"`      // 背景图高度（像素）
 	SliderStartX int    `json:"slider_start_x"` // 滑块起始 X 坐标（相对背景图，左边缘为 0）
+	SliderStartY int    `json:"slider_start_y"` // 滑块起始 Y 坐标（相对背景图，顶部为 0）
 }

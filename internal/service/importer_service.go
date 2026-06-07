@@ -119,7 +119,9 @@ func (s *importerService) ImportFile(userID, notebookID uint, file *multipart.Fi
 			if err := s.embedding.Vectorize(source.ID, markdown); err != nil {
 				logger.Warn("向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
 			} else {
-				_ = s.sourceRepo.SetVectorized(source.ID)
+				if err := s.sourceRepo.SetVectorized(source.ID); err != nil {
+					logger.Warn("标记向量化状态失败", zap.Uint("source_id", source.ID), zap.Error(err))
+				}
 			}
 		}()
 	}
@@ -226,7 +228,9 @@ func (s *importerService) ConfirmAudio(userID uint, previewID string, editedCont
 		return nil, err
 	}
 
-	_ = s.previewCache.UpdateStatus(ctx, previewID, "confirmed")
+	if err := s.previewCache.UpdateStatus(ctx, previewID, "confirmed"); err != nil {
+		logger.Warn("更新预览状态失败", zap.String("preview_id", previewID), zap.Error(err))
+	}
 
 	// 异步向量化
 	if s.embedding != nil {
@@ -234,7 +238,9 @@ func (s *importerService) ConfirmAudio(userID uint, previewID string, editedCont
 			if err := s.embedding.Vectorize(source.ID, content); err != nil {
 				logger.Warn("音频向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
 			} else {
-				_ = s.sourceRepo.SetVectorized(source.ID)
+				if err := s.sourceRepo.SetVectorized(source.ID); err != nil {
+					logger.Warn("标记向量化状态失败", zap.Uint("source_id", source.ID), zap.Error(err))
+				}
 			}
 		}()
 	}
@@ -319,7 +325,9 @@ func (s *importerService) processURLs(taskID string, userID, notebookID uint, ur
 				if err := s.embedding.Vectorize(srcID, content); err != nil {
 					logger.Warn("向量化失败", zap.Uint("source_id", srcID), zap.Error(err))
 				} else {
-					_ = s.sourceRepo.SetVectorized(srcID)
+					if err := s.sourceRepo.SetVectorized(srcID); err != nil {
+						logger.Warn("标记向量化状态失败", zap.Uint("source_id", srcID), zap.Error(err))
+					}
 				}
 			}(source.ID, markdown)
 		}
@@ -328,7 +336,11 @@ func (s *importerService) processURLs(taskID string, userID, notebookID uint, ur
 	}
 
 	// 更新任务最终状态
-	task, _ := s.importCache.Get(ctx, taskID)
+	task, err := s.importCache.Get(ctx, taskID)
+	if err != nil {
+		logger.Error("获取导入任务失败", zap.String("task_id", taskID), zap.Error(err))
+		return
+	}
 	if task != nil {
 		if task.FailCount > 0 && task.SuccessCount > 0 {
 			task.Status = "partial_failed"
@@ -337,14 +349,21 @@ func (s *importerService) processURLs(taskID string, userID, notebookID uint, ur
 		} else {
 			task.Status = "completed"
 		}
-		_ = s.importCache.Save(ctx, task)
+		if err := s.importCache.Save(ctx, task); err != nil {
+			logger.Error("保存导入任务最终状态失败", zap.String("task_id", taskID), zap.Error(err))
+		}
 	}
 }
 
 // incrementTaskFail 增加失败计数
 func (s *importerService) incrementTaskFail(ctx context.Context, taskID string, errMsg string) {
 	task, err := s.importCache.Get(ctx, taskID)
-	if err != nil || task == nil {
+	if err != nil {
+		logger.Error("获取导入任务失败", zap.String("task_id", taskID), zap.Error(err))
+		return
+	}
+	if task == nil {
+		logger.Warn("导入任务不存在", zap.String("task_id", taskID))
 		return
 	}
 	task.FailCount++
@@ -353,17 +372,26 @@ func (s *importerService) incrementTaskFail(ctx context.Context, taskID string, 
 	} else {
 		task.ErrorDetail = errMsg
 	}
-	_ = s.importCache.Save(ctx, task)
+	if err := s.importCache.Save(ctx, task); err != nil {
+		logger.Error("保存导入任务失败计数失败", zap.String("task_id", taskID), zap.Error(err))
+	}
 }
 
 // incrementTaskSuccess 增加成功计数
 func (s *importerService) incrementTaskSuccess(ctx context.Context, taskID string) {
 	task, err := s.importCache.Get(ctx, taskID)
-	if err != nil || task == nil {
+	if err != nil {
+		logger.Error("获取导入任务失败", zap.String("task_id", taskID), zap.Error(err))
+		return
+	}
+	if task == nil {
+		logger.Warn("导入任务不存在", zap.String("task_id", taskID))
 		return
 	}
 	task.SuccessCount++
-	_ = s.importCache.Save(ctx, task)
+	if err := s.importCache.Save(ctx, task); err != nil {
+		logger.Error("保存导入任务成功计数失败", zap.String("task_id", taskID), zap.Error(err))
+	}
 }
 
 // GetImportTask 获取导入任务状态

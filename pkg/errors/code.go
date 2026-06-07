@@ -55,6 +55,12 @@ const (
 	CodeDuplicateImport       = 40008
 	CodePreviewExpired        = 40009
 
+	// 搜索 Agent 错误码 4xxxx（续）
+	CodeLLMNotConfigured   = 40010
+	CodeLLMCallFailed      = 40011
+	CodeLLMResponseInvalid = 40012
+	CodeSearchAgentTimeout = 40013
+
 	// 服务器错误 5xxxx
 	CodeInternalServiceError = 50001
 )
@@ -99,6 +105,10 @@ var codeMessages = map[int]string{
 	CodeInvalidYoudaoAPIKey:    "有道API Key无效",
 	CodeDuplicateImport:        "重复导入",
 	CodePreviewExpired:         "预览已过期",
+	CodeLLMNotConfigured:       "请先在设置中配置 LLM 服务",
+	CodeLLMCallFailed:          "LLM 服务调用失败",
+	CodeLLMResponseInvalid:     "LLM 返回结果格式异常",
+	CodeSearchAgentTimeout:     "搜索 Agent 执行超时",
 	CodeInternalServiceError:   "内部服务错误",
 }
 

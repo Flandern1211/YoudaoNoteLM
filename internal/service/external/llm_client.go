@@ -1,0 +1,220 @@
+// internal/service/external/llm_client.go
+package external
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"YoudaoNoteLm/pkg/logger"
+
+	"go.uber.org/zap"
+)
+
+type llmClient struct {
+	name   string
+	apiURL string
+	apiKey string
+	model  string
+	client *http.Client
+}
+
+// NewLLMClient 创建 OpenAI 兼容 LLM 客户端
+// 支持 OpenAI、通义千问、DeepSeek 等 OpenAI 兼容 API
+func NewLLMClient(name, apiURL, apiKey, model string) LLMClient {
+	return &llmClient{
+		name:   name,
+		apiURL: apiURL,
+		apiKey: apiKey,
+		model:  model,
+		client: &http.Client{Timeout: 120 * time.Second},
+	}
+}
+
+// openaiRequest OpenAI API 请求结构
+type openaiRequest struct {
+	Model    string          `json:"model"`
+	Messages []openaiMessage `json:"messages"`
+	Tools    []openaiTool    `json:"tools,omitempty"`
+}
+
+type openaiMessage struct {
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	ToolCalls  []openaiToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+type openaiTool struct {
+	Type     string         `json:"type"`
+	Function openaiFunction `json:"function"`
+}
+
+type openaiFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+type openaiToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// openaiResponse OpenAI API 响应结构
+type openaiResponse struct {
+	Choices []struct {
+		Message struct {
+			Content   string           `json:"content"`
+			ToolCalls []openaiToolCall `json:"tool_calls"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// Chat 普通对话
+func (c *llmClient) Chat(messages []Message) (string, error) {
+	resp, err := c.doRequest(messages, nil)
+	if err != nil {
+		return "", err
+	}
+	return resp.Choices[0].Message.Content, nil
+}
+
+// ChatWithTools 带工具调用的对话
+func (c *llmClient) ChatWithTools(messages []Message, tools []ToolDef) (*ToolCallResponse, error) {
+	resp, err := c.doRequest(messages, tools)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ToolCallResponse{
+		Content: resp.Choices[0].Message.Content,
+	}
+
+	for _, tc := range resp.Choices[0].Message.ToolCalls {
+		args := make(map[string]any)
+		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+			logger.Warn("解析工具参数失败",
+				zap.String("tool", tc.Function.Name),
+				zap.String("raw_args", tc.Function.Arguments),
+				zap.Error(err),
+			)
+			continue
+		}
+		result.ToolCalls = append(result.ToolCalls, ToolCall{
+			ID:        tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: args,
+		})
+	}
+
+	return result, nil
+}
+
+// doRequest 执行 OpenAI API 请求
+func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiResponse, error) {
+	// 转换消息格式
+	oaiMessages := make([]openaiMessage, len(messages))
+	for i, m := range messages {
+		oaiMessages[i] = openaiMessage{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+		}
+		// 转换 tool_calls（assistant 消息携带）
+		if len(m.ToolCalls) > 0 {
+			oaiMessages[i].ToolCalls = make([]openaiToolCall, len(m.ToolCalls))
+			for j, tc := range m.ToolCalls {
+				argsBytes, _ := json.Marshal(tc.Arguments)
+				oaiMessages[i].ToolCalls[j] = openaiToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{
+						Name:      tc.Name,
+						Arguments: string(argsBytes),
+					},
+				}
+			}
+		}
+	}
+
+	reqBody := openaiRequest{
+		Model:    c.model,
+		Messages: oaiMessages,
+	}
+
+	// 转换工具定义
+	if len(tools) > 0 {
+		reqBody.Tools = make([]openaiTool, len(tools))
+		for i, t := range tools {
+			reqBody.Tools[i] = openaiTool{
+				Type: "function",
+				Function: openaiFunction{
+					Name:        t.Name,
+					Description: t.Description,
+					Parameters:  t.Parameters,
+				},
+			}
+		}
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.apiURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("LLM请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取LLM响应失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("LLM返回错误 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var oaiResp openaiResponse
+	if err := json.Unmarshal(respBody, &oaiResp); err != nil {
+		return nil, fmt.Errorf("解析LLM响应失败: %w", err)
+	}
+
+	if oaiResp.Error != nil {
+		return nil, fmt.Errorf("LLM错误: %s", oaiResp.Error.Message)
+	}
+
+	if len(oaiResp.Choices) == 0 {
+		return nil, fmt.Errorf("LLM返回空结果")
+	}
+
+	logger.Info("LLM调用成功",
+		zap.String("model", c.model),
+		zap.Int("tool_calls", len(oaiResp.Choices[0].Message.ToolCalls)),
+	)
+
+	return &oaiResp, nil
+}

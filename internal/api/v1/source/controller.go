@@ -158,3 +158,21 @@ func (ctrl *Controller) GetOriginal(c *gin.Context) {
 		"type":    contentType,
 	})
 }
+
+// GetDownloadURL 获取文件下载链接
+func (ctrl *Controller) GetDownloadURL(c *gin.Context) {
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "无效的ID")
+		return
+	}
+	id := uint(id64)
+
+	url, err := ctrl.sourceService.GetDownloadURL(id)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+
+	response.Success(c, map[string]string{"url": url})
+}

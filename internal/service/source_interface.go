@@ -14,4 +14,5 @@ type SourceService interface {
 	BatchDelete(ids []uint) error
 	GetContent(id uint) (string, error)
 	GetOriginalContent(id uint) (content string, contentType string, err error)
+	GetDownloadURL(id uint) (string, error)
 }

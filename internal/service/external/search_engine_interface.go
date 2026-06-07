@@ -1,3 +1,4 @@
+// internal/service/external/search_engine_interface.go
 package external
 
 // SearchResultItem 搜索结果项

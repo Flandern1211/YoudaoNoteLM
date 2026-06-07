@@ -74,5 +74,12 @@ var (
 	ErrInvalidYoudaoAPIKey    = NewDefault(CodeInvalidYoudaoAPIKey)
 	ErrDuplicateImport        = NewDefault(CodeDuplicateImport)
 	ErrPreviewExpired         = NewDefault(CodePreviewExpired)
-	ErrInternalServiceError   = NewDefault(CodeInternalServiceError)
+
+	// 搜索 Agent 相关错误
+	ErrLLMNotConfigured   = NewDefault(CodeLLMNotConfigured)
+	ErrLLMCallFailed      = NewDefault(CodeLLMCallFailed)
+	ErrLLMResponseInvalid = NewDefault(CodeLLMResponseInvalid)
+	ErrSearchAgentTimeout = NewDefault(CodeSearchAgentTimeout)
+
+	ErrInternalServiceError = NewDefault(CodeInternalServiceError)
 )

@@ -23,16 +23,16 @@ type minioStorage struct {
 }
 
 // NewMinIOStorage 创建 MinIO 存储
-func NewMinIOStorage(endpoint, accessKey, secretKey, bucket string) FileStorage {
+func NewMinIOStorage(endpoint, accessKey, secretKey, bucket string) (FileStorage, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: false,
 	})
 	if err != nil {
-		panic(fmt.Sprintf("MinIO 初始化失败: %v", err))
+		return nil, fmt.Errorf("MinIO 初始化失败: %w", err)
 	}
 
-	return &minioStorage{client: client, bucket: bucket}
+	return &minioStorage{client: client, bucket: bucket}, nil
 }
 
 // Upload 上传文件到 MinIO

@@ -17,5 +17,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		sources.POST("/batch-delete", ctrl.BatchDelete)
 		sources.GET("/:id/content", ctrl.GetContent)
 		sources.GET("/:id/original", ctrl.GetOriginal)
+		sources.GET("/:id/download", ctrl.GetDownloadURL)
 	}
 }

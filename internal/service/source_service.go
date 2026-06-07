@@ -1,18 +1,22 @@
 package service
 
 import (
+	"time"
+
 	"YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
+	"YoudaoNoteLm/internal/service/external"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 )
 
 type sourceService struct {
 	sourceRepo repository.SourceRepository
+	storage    external.FileStorage
 }
 
-func NewSourceService(sourceRepo repository.SourceRepository) SourceService {
-	return &sourceService{sourceRepo: sourceRepo}
+func NewSourceService(sourceRepo repository.SourceRepository, storage external.FileStorage) SourceService {
+	return &sourceService{sourceRepo: sourceRepo, storage: storage}
 }
 
 func (s *sourceService) List(userID, notebookID uint, keyword string, page, size int) ([]*response.SourceResponse, int64, error) {
@@ -88,17 +92,41 @@ func (s *sourceService) GetOriginalContent(id uint) (string, string, error) {
 
 	switch source.Type {
 	case "file":
-		// 返回文件路径，前端通过该路径从对象存储获取并渲染原格式（PDF/DOCX等）
-		return source.FilePath, source.MimeType, nil
+		// 对于文件类型，返回 Markdown 内容作为原内容展示
+		// 原始文件通过 GetDownloadURL 提供下载
+		return source.MarkdownContent, source.MimeType, nil
 	case "url":
 		return source.OriginalURL, "url", nil
 	case "audio":
-		return "", "", bizerrors.New(bizerrors.CodeBadRequest, "音频类型不支持查看原格式")
+		return source.MarkdownContent, "audio_transcript", nil
 	case "note", "youdao":
 		return source.MarkdownContent, "raw_markdown", nil
 	default:
 		return "", "", bizerrors.New(bizerrors.CodeBadRequest, "该类型不支持查看原格式")
 	}
+}
+
+func (s *sourceService) GetDownloadURL(id uint) (string, error) {
+	source, err := s.GetByID(id)
+	if err != nil {
+		return "", err
+	}
+	if source.FilePath == "" {
+		return "", bizerrors.New(bizerrors.CodeBadRequest, "该来源没有可下载的文件")
+	}
+
+	// 如果 storage 是 MinIO，生成预签名 URL
+	if minioStorage, ok := s.storage.(interface {
+		GetPresignedURL(filePath string, expiry time.Duration) (string, error)
+	}); ok {
+		url, err := minioStorage.GetPresignedURL(source.FilePath, 10*time.Minute)
+		if err != nil {
+			return "", bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "生成下载链接失败", err)
+		}
+		return url, nil
+	}
+
+	return "", bizerrors.New(bizerrors.CodeInternalServiceError, "存储服务不支持生成下载链接")
 }
 
 func toSourceResponse(src *entity.Source) *response.SourceResponse {

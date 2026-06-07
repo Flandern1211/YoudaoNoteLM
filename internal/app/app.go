@@ -1,6 +1,7 @@
 package app
 
 import (
+	searchAgent "YoudaoNoteLm/internal/agent/search"
 	"YoudaoNoteLm/internal/api"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
@@ -154,12 +155,16 @@ func (a *App) initDependencies() {
 
 	// 创建外部服务客户端
 	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
-	minioStorage := external.NewMinIOStorage(
+	minioStorage, err := external.NewMinIOStorage(
 		a.cfg.External.MinIO.Endpoint,
 		a.cfg.External.MinIO.AccessKey,
 		a.cfg.External.MinIO.SecretKey,
 		a.cfg.External.MinIO.Bucket,
 	)
+	if err != nil {
+		logger.Error("MinIO 存储初始化失败", zap.Error(err))
+		// MinIO 失败不影响核心功能，继续启动
+	}
 
 	// ASR 服务（根据 provider 配置自动选择实现）
 	asrSvc := external.NewASRService(a.cfg.External.ASR)
@@ -167,6 +172,9 @@ func (a *App) initDependencies() {
 	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
 		setter.SetStorage(minioStorage)
 	}
+
+	// 创建 Service（依赖外部客户端）
+	sourceSvc := service.NewSourceService(sourceRepo, minioStorage)
 
 	// 创建缓存
 	redisCache := cache.New(a.redis)
@@ -185,11 +193,16 @@ func (a *App) initDependencies() {
 	// 创建用户配置服务
 	userCfgSvc := service.NewUserConfigService(userConfigRepo)
 
+	// 创建 ConfigService（配置路由降级）
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache)
+
+	// 创建搜索 Agent（LLM 客户端在每次请求时通过 ConfigService 获取）
+	searchAgent := searchAgent.NewSearchAgent(configSvc, importerSvc)
+	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchAgent)
+
 	// 创建 Router
-	a.router = api.NewRouter(
-		userSvc, authSvc, notebookSvc, sourceSvc, importerSvc,
-		adminSvc, userCfgSvc, captchaSvc, tokenBlacklistSvc,
-	)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由
