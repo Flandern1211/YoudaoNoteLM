@@ -13,5 +13,6 @@ type AdminService interface {
 	GetConfigs(group string) ([]*entity.SysConfig, error)
 	UpdateConfig(group, key string, value json.RawMessage, enabled bool) error
 	AddConfig(group, key string, value json.RawMessage, description string) error
+	DeleteConfig(group, key string) error
 	GetConfigStatus() ([]response.ConfigStatusGroupResponse, error)
 }

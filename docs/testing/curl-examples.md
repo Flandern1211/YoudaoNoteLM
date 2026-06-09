@@ -538,9 +538,117 @@ curl -X POST "${BASE_URL}/user/config/embedding" \
 
 ---
 
-## 8. 搜索模块
+## 8. Provider Registry 模块
 
-### 6.1 智能搜索
+### 8.1 查询所有 Provider
+
+```bash
+curl -X GET "${BASE_URL}/providers" | jq
+```
+
+**预期响应:**
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "providers": [
+      {
+        "service_type": "asr",
+        "provider": "aliyun_nls",
+        "display_name": "阿里云智能语音",
+        "required_keys": ["access_key_id", "access_key_secret", "app_key"],
+        "optional_keys": null
+      },
+      {
+        "service_type": "embedding",
+        "provider": "openai",
+        "display_name": "OpenAI Embedding",
+        "required_keys": ["api_key", "model"],
+        "optional_keys": ["api_url"]
+      },
+      {
+        "service_type": "llm",
+        "provider": "openai",
+        "display_name": "OpenAI",
+        "required_keys": ["api_key", "model"],
+        "optional_keys": ["api_url"]
+      },
+      {
+        "service_type": "search",
+        "provider": "searxng",
+        "display_name": "SearXNG（自部署）",
+        "required_keys": ["api_url"],
+        "optional_keys": null
+      }
+    ]
+  }
+}
+```
+
+### 8.2 按类型过滤 Provider
+
+```bash
+# 查询所有搜索引擎 provider
+curl -X GET "${BASE_URL}/providers?type=search" | jq
+
+# 查询所有 LLM provider
+curl -X GET "${BASE_URL}/providers?type=llm" | jq
+
+# 查询所有 Embedding provider
+curl -X GET "${BASE_URL}/providers?type=embedding" | jq
+
+# 查询所有 ASR provider
+curl -X GET "${BASE_URL}/providers?type=asr" | jq
+```
+
+**预期响应 (type=search):**
+```json
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "providers": [
+      {
+        "service_type": "search",
+        "provider": "searxng",
+        "display_name": "SearXNG（自部署）",
+        "required_keys": ["api_url"],
+        "optional_keys": null
+      },
+      {
+        "service_type": "search",
+        "provider": "duckduckgo",
+        "display_name": "DuckDuckGo（免费）",
+        "required_keys": null,
+        "optional_keys": null
+      },
+      {
+        "service_type": "search",
+        "provider": "custom",
+        "display_name": "自定义搜索 API",
+        "required_keys": ["api_url"],
+        "optional_keys": ["api_key"]
+      }
+    ]
+  }
+}
+```
+
+### 8.3 Provider 类型说明
+
+| 服务类型 | 说明 | 示例 Provider |
+|---------|------|---------------|
+| `search` | 搜索引擎服务 | searxng, duckduckgo, custom |
+| `llm` | 大语言模型服务 | openai, deepseek, zhipu, qwen |
+| `embedding` | 向量嵌入服务 | openai, zhipu |
+| `asr` | 语音识别服务 | aliyun_nls |
+
+---
+
+## 9. 搜索模块
+
+### 9.1 智能搜索
 
 ```bash
 curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search" \
@@ -551,7 +659,7 @@ curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search" \
   }' | jq
 ```
 
-### 6.2 URL导入
+### 9.2 URL导入
 
 ```bash
 curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search/url" \
@@ -562,7 +670,7 @@ curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search/url" \
   }' | jq
 ```
 
-### 6.3 批量导入
+### 9.3 批量导入
 
 ```bash
 curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search/import" \
@@ -578,9 +686,9 @@ curl -X POST "${BASE_URL}/notebooks/${NOTEBOOK_ID}/search/import" \
 
 ---
 
-## 7. 错误场景测试
+## 10. 错误场景测试
 
-### 7.1 未认证访问
+### 10.1 未认证访问
 
 ```bash
 # 不带Authorization头
@@ -628,7 +736,7 @@ curl -X POST "${BASE_URL}/auth/register" \
 # }
 ```
 
-### 7.4 资源不存在
+### 10.4 资源不存在
 
 ```bash
 # 访问不存在的笔记本
@@ -644,7 +752,7 @@ curl -X GET "${BASE_URL}/notebooks/99999" \
 
 ---
 
-## 8. 完整测试流程脚本
+## 11. 完整测试流程脚本
 
 ```bash
 #!/bin/bash
@@ -728,23 +836,7 @@ echo -e "\n=== 测试完成 ==="
 
 ---
 
-## 9. 错误场景测试
-
-### 9.1 未认证访问
-
-```bash
-curl -X GET "http://localhost:8080/api/v1/health" | jq
-
-# 预期响应
-# {
-#   "status": "ok",
-#   "message": "YouDaoNoteLM API is running"
-# }
-```
-
----
-
-## 10. 完整测试流程脚本（更新版）
+## 12. 完整测试流程脚本（更新版）
 
 ```bash
 #!/bin/bash
@@ -856,14 +948,20 @@ curl -s -X POST "${BASE_URL}/admin/config/search" \
     "description": "DuckDuckGo 兜底搜索引擎"
   }' | jq
 
-echo -e "\n=== 16. 刷新Token ==="
+echo -e "\n=== 16. Provider Registry - 查询所有 Provider ==="
+curl -s -X GET "${BASE_URL}/providers" | jq
+
+echo -e "\n=== 17. Provider Registry - 按类型过滤 Provider ==="
+curl -s -X GET "${BASE_URL}/providers?type=search" | jq
+
+echo -e "\n=== 18. 刷新Token ==="
 REFRESH_RESPONSE=$(curl -s -X POST "${BASE_URL}/auth/refresh" \
   -H "Content-Type: application/json" \
   -d "{\"refresh_token\": \"${REFRESH_TOKEN}\"}")
 NEW_ACCESS_TOKEN=$(echo $REFRESH_RESPONSE | jq -r '.data.access_token')
 echo "New Access Token: ${NEW_ACCESS_TOKEN:0:50}..."
 
-echo -e "\n=== 17. 登出 ==="
+echo -e "\n=== 19. 登出 ==="
 curl -s -X POST "${BASE_URL}/auth/logout" \
   -H "Content-Type: application/json" \
   -d "{

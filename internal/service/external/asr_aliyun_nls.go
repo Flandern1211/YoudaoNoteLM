@@ -149,12 +149,18 @@ func (s *aliyunNLSASRService) submitTask(audioURL string) (string, error) {
 		return "", fmt.Errorf("解析转写任务响应失败: %w", err)
 	}
 
-	statusText, _ := postMapResult["StatusText"].(string)
+	statusText, ok := postMapResult["StatusText"].(string)
+	if !ok {
+		return "", fmt.Errorf("转写任务响应中缺少 StatusText")
+	}
 	if statusText != "SUCCESS" {
 		return "", fmt.Errorf("提交转写任务失败: %s", statusText)
 	}
 
-	taskID, _ := postMapResult["TaskId"].(string)
+	taskID, ok := postMapResult["TaskId"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("转写任务响应中缺少 TaskId")
+	}
 	logger.Info("ASR转写任务已提交", zap.String("task_id", taskID))
 	return taskID, nil
 }
@@ -188,7 +194,10 @@ func (s *aliyunNLSASRService) pollResult(taskID string) (string, error) {
 			return "", fmt.Errorf("解析转写结果失败: %w", err)
 		}
 
-		statusText, _ := getMapResult["StatusText"].(string)
+		statusText, ok := getMapResult["StatusText"].(string)
+		if !ok {
+			return "", fmt.Errorf("转写结果响应中缺少 StatusText")
+		}
 		switch statusText {
 		case "RUNNING", "QUEUEING":
 			logger.Debug("ASR任务处理中",

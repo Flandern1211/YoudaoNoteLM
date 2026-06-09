@@ -21,7 +21,7 @@ func NewCustomEngine(name, apiURL, apiKey string) SearchEngine {
 		name:   name,
 		apiURL: apiURL,
 		apiKey: apiKey,
-		client: &http.Client{Timeout: 15 * time.Second},
+		client: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -30,10 +30,13 @@ func (e *customEngine) Name() string {
 }
 
 func (e *customEngine) Search(query string, limit int) ([]SearchResultItem, error) {
-	reqBody, _ := json.Marshal(map[string]interface{}{
+	reqBody, err := json.Marshal(map[string]interface{}{
 		"query": query,
 		"limit": limit,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", e.apiURL, bytes.NewReader(reqBody))
 	if err != nil {
@@ -51,7 +54,10 @@ func (e *customEngine) Search(query string, limit int) ([]SearchResultItem, erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("搜索API返回错误 %d, 且读取响应体失败: %w", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("搜索API返回错误 %d: %s", resp.StatusCode, string(body))
 	}
 

@@ -10,6 +10,8 @@ import (
 // SearchAgentInterface 搜索 Agent 执行接口（由 agent/search.SearchAgent 实现）
 type SearchAgentInterface interface {
 	Execute(ctx context.Context, userID, notebookID uint, task string) (*SearchAgentResult, error)
+	// ExecuteStream 流式执行搜索任务，通过 channel 逐个推送事件，完成后关闭 channel
+	ExecuteStream(ctx context.Context, userID, notebookID uint, task string) <-chan *SearchAgentEvent
 }
 
 // SearchAgentResult Agent 执行结果（与 agent/search.AgentResult 对应）
@@ -33,6 +35,8 @@ type SearchAgentEvent struct {
 type SearchAgentService interface {
 	// Search 智能搜索：Agent 自主执行多轮搜索+分析
 	Search(userID, notebookID uint, query string) (*response.SearchResponse, error)
+	// SearchStream 智能搜索（流式）：返回事件 channel，用于 SSE 推送
+	SearchStream(userID, notebookID uint, query string) <-chan *SearchAgentEvent
 	// ImportFromURL URL 直接导入（返回任务 ID）
 	ImportFromURL(userID, notebookID uint, url string) (string, error)
 	// ImportSearchResults 批量导入 URL 列表

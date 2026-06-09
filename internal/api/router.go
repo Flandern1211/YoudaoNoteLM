@@ -5,8 +5,8 @@ import (
 	"YoudaoNoteLm/internal/api/v1/auth"
 	"YoudaoNoteLm/internal/api/v1/importn"
 	"YoudaoNoteLm/internal/api/v1/notebook"
+	"YoudaoNoteLm/internal/api/v1/providers"
 	search "YoudaoNoteLm/internal/api/v1/search"
-	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
 	"YoudaoNoteLm/internal/api/v1/user_config"
@@ -26,6 +26,7 @@ type Router struct {
 	adminCtrl      *admin.Controller
 	userCfgCtrl    *user_config.Controller
 	searchCtrl     *search.Controller
+	providerCtrl   *providers.Controller
 }
 
 // NewRouter 创建路由
@@ -40,6 +41,7 @@ func NewRouter(
 	searchAgentService service.SearchAgentService,
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
+	configService service.ConfigService,
 ) *Router {
 	return &Router{
 		userCtrl:       user.NewController(userService, tokenBlacklist),
@@ -50,7 +52,8 @@ func NewRouter(
 		importCtrl:     importn.NewController(importerService),
 		searchCtrl:     search.NewController(searchAgentService, tokenBlacklist),
 		adminCtrl:      admin.NewController(adminService),
-		userCfgCtrl:    user_config.NewController(userConfigService),
+		userCfgCtrl:    user_config.NewController(userConfigService, tokenBlacklist),
+		providerCtrl:   providers.NewController(configService),
 	}
 }
 
@@ -98,5 +101,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 搜索路由（需认证）
 		r.searchCtrl.RegisterRoutes(v1)
+
+		// Provider 发现路由（/active 支持可选认证）
+		r.providerCtrl.RegisterRoutes(v1, middleware.OptionalAuth(r.tokenBlacklist))
 	}
 }

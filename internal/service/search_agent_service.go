@@ -44,6 +44,12 @@ func (s *searchAgentService) Search(userID, notebookID uint, query string) (*res
 	return parseAgentResult(result.Content, result.SearchRounds)
 }
 
+// SearchStream 智能搜索（流式）：返回事件 channel，用于 SSE 推送
+func (s *searchAgentService) SearchStream(userID, notebookID uint, query string) <-chan *SearchAgentEvent {
+	ctx := context.Background()
+	return s.searchAgent.ExecuteStream(ctx, userID, notebookID, query)
+}
+
 // ImportFromURL URL 直接导入（返回任务 ID）
 func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) (string, error) {
 	taskID, err := s.importer.ImportSearchResults(userID, notebookID, []string{url})

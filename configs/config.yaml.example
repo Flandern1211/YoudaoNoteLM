@@ -1,3 +1,4 @@
+# YouDaoNoteLM 配置文件
 
 # 服务器配置
 app:
@@ -6,53 +7,30 @@ app:
   mode: "debug"  # debug, release, test
   port: 8080
 
-# MySQL 数据库配置
+# 数据库配置
 database:
   mysql:
     host: "localhost"
     port: 3306
-    user: "root"
-    password: "your_password"
-    dbname: "your_database"
+    username: "root"
+    password: "20041211wzwaicjW."
+    database: "youdao"
     max_idle_conns: 10
     max_open_conns: 100
   redis:
     host: "localhost"
     port: 6379
-    password: ""  # 无密码留空
-    db: 0         # 数据库编号
+    password: ""
+    db: 15
     pool_size: 10
-
-# Milvus 向量数据库配置
-milvus:
-  host: "localhost"
-  port: 19530
 
 # JWT 配置
 jwt:
-  secret: "your-secret-key-here"  # 请修改为随机生成的密钥
+  secret: "YouDaoNoteBookLM-API-Web-wangzhiwei-zhaojingchao-renfuhang"  # 请修改为随机生成的密钥
   access_token_exp: "15m"     # Access Token 过期时间：15 分钟
   refresh_token_exp: "24h"    # Refresh Token 过期时间：1 天
-  issuer: "mindtrace"         # Token 签发者
+  issuer: "youdaonotelm"      # Token 签发者
 
-# 外部服务配置
-external:
-  markitdown:
-    url: "http://localhost:8085"       # MarkItDown 文档转换服务地址
-  asr:
-    provider: "aliyun_nls"             # aliyun_nls / whisper / ...
-    params:
-      access_key_id: "your_key_id"
-      access_key_secret: "your_key_secret"
-      app_key: "your_app_key"
-  minio:
-    endpoint: "localhost:9000"         # MinIO 地址（不带 http://）
-    access_key: "minioadmin"           # MinIO Access Key
-    secret_key: "minioadmin"           # MinIO Secret Key
-    bucket: "youdaonotelm"             # MinIO Bucket 名称
-
-# 搜索引擎通过 sys_config 表配置（config_group="search", config_key="searxng"）
-# config_value 存放 SearXNG 地址，如 "http://localhost:8888"
 
 # 日志配置
 log:
@@ -67,6 +45,23 @@ log:
 email:
   host: "smtp.qq.com"
   port: 587
-  username: ""  // 自己的qq邮箱
-  password: ""  // 开通smtp之后认证的密码，不是qq密码
-  from: ""  # 发件人地址。自己的qq邮箱
+  username: "2129905621@qq.com"
+  password: "koptculidhqpdcjb"
+  from: "2129905621@qq.com"  # 发件人地址
+
+
+
+# Milvus 向量数据库配置
+milvus:
+  host: "60.205.184.232"
+  port: 19530
+
+# 外部服务配置
+external:
+  markitdown:
+    url: "http://localhost:8081"       # MarkItDown 文档转换服务地址
+  minio:
+    endpoint: "60.205.184.232:9003"
+    access_key: "minioadmin"
+    secret_key: "12345678"
+    bucket: "youdaonotelm"

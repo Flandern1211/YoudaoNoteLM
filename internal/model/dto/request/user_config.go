@@ -12,4 +12,5 @@ type UserConfigRequest struct {
 	Dimensions  *int            `json:"dimensions"`
 	DailyQuota  *int            `json:"daily_quota"`
 	ExtraConfig json.RawMessage `json:"extra_config"`
+	Enabled     *bool           `json:"enabled"` // 使用指针以区分未传和 false
 }

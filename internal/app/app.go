@@ -19,6 +19,13 @@ import (
 	"syscall"
 	"time"
 
+	// 触发 provider 注册（各子包 init() 会自动注册到全局 Registry）
+	_ "YoudaoNoteLm/internal/service/external/asr"
+	_ "YoudaoNoteLm/internal/service/external/document"
+	_ "YoudaoNoteLm/internal/service/external/embedding"
+	_ "YoudaoNoteLm/internal/service/external/llm"
+	_ "YoudaoNoteLm/internal/service/external/search"
+
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -151,7 +158,6 @@ func (a *App) initDependencies() {
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	notebookSvc := service.NewNotebookService(notebookRepo)
-	sourceSvc := service.NewSourceService(sourceRepo)
 
 	// 创建外部服务客户端
 	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
@@ -166,13 +172,6 @@ func (a *App) initDependencies() {
 		// MinIO 失败不影响核心功能，继续启动
 	}
 
-	// ASR 服务（根据 provider 配置自动选择实现）
-	asrSvc := external.NewASRService(a.cfg.External.ASR)
-	// 注入 MinIO 存储，ASR 需要生成预签名 URL
-	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
-		setter.SetStorage(minioStorage)
-	}
-
 	// 创建 Service（依赖外部客户端）
 	sourceSvc := service.NewSourceService(sourceRepo, minioStorage)
 
@@ -183,26 +182,25 @@ func (a *App) initDependencies() {
 
 	// 创建导入服务（EmbeddingService 暂时为 nil，后续模块接入）
 	importerSvc := service.NewImporterService(
-		markitdownClient, asrSvc, minioStorage,
+		nil, markitdownClient, minioStorage,
 		sourceRepo, importTaskCache, audioPreviewCache, nil,
 	)
 
-	// 创建后台管理服务
-	adminSvc := service.NewAdminService(userRepo, sysConfigRepo)
-
-	// 创建用户配置服务
-	userCfgSvc := service.NewUserConfigService(userConfigRepo)
-
 	// 创建 ConfigService（配置路由降级）
-	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache)
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, minioStorage)
+
+	// 创建后台管理服务
+	adminSvc := service.NewAdminService(userRepo, sysConfigRepo, configSvc)
+
+	// 创建用户配置服务（依赖 ConfigService）
+	userCfgSvc := service.NewUserConfigService(userConfigRepo, configSvc)
 
 	// 创建搜索 Agent（LLM 客户端在每次请求时通过 ConfigService 获取）
 	searchAgent := searchAgent.NewSearchAgent(configSvc, importerSvc)
 	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchAgent)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc)
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, adminSvc, userCfgSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc, configSvc)
 }
 
 // initRouter 初始化路由
@@ -262,11 +260,17 @@ func (a *App) gracefulShutdown() {
 	}
 
 	// 关闭数据库连接
-	_ = database.CloseMySQL()
-	_ = database.CloseRedis()
+	if err := database.CloseMySQL(); err != nil {
+		logger.Error("关闭 MySQL 连接失败", zap.Error(err))
+	}
+	if err := database.CloseRedis(); err != nil {
+		logger.Error("关闭 Redis 连接失败", zap.Error(err))
+	}
 
 	// 同步日志
-	_ = logger.Sync()
+	if err := logger.Sync(); err != nil {
+		logger.Error("同步日志失败", zap.Error(err))
+	}
 
 	logger.Info("服务器已关闭")
 	logger.Info("=========================================")

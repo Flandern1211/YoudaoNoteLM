@@ -17,4 +17,5 @@ type ImporterService interface {
 	ConfirmAudio(userID uint, previewID string, editedContent *string) (*entity.Source, error)
 	ImportSearchResults(userID, notebookID uint, urls []string) (taskID string, err error)
 	GetImportTask(taskID string) (interface{}, error)
+	DeleteImportTask(taskID string) error // 删除导入任务
 }

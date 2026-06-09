@@ -23,5 +23,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup, tokenBlacklist servic
 	{
 		imp.POST("/audio/confirm", ctrl.ConfirmAudio)
 		imp.GET("/tasks/:taskId", ctrl.GetTask)
+		imp.DELETE("/tasks/:taskId", ctrl.DeleteTask) // 删除/取消任务
 	}
 }

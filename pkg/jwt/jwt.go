@@ -18,7 +18,11 @@ func GetParser() *jwt.Parser {
 // generateJTI 生成唯一的 Token ID
 func generateJTI() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read 在正常情况下不会失败
+		// 如果失败说明系统熵源不可用，panic 是合理的
+		panic("crypto/rand.Read 失败: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }
 

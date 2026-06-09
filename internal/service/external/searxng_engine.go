@@ -7,7 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+
+	"YoudaoNoteLm/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type searxngEngine struct {
@@ -19,7 +23,7 @@ type searxngEngine struct {
 func NewSearXNGEngine(baseURL string) SearchEngine {
 	return &searxngEngine{
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 15 * time.Second},
+		client:  &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -32,13 +36,20 @@ func (e *searxngEngine) Search(query string, limit int) ([]SearchResultItem, err
 		limit = 10
 	}
 
-	searchURL := fmt.Sprintf("%s/search?q=%s&format=json", e.baseURL, url.QueryEscape(query))
+	// 确保 baseURL 不以 / 结尾
+	baseURL := strings.TrimRight(e.baseURL, "/")
+	searchURL := fmt.Sprintf("%s/search?q=%s&format=json", baseURL, url.QueryEscape(query))
+
+	logger.Info("SearXNG 请求 URL", zap.String("url", searchURL))
 
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "YoudaoNoteLM/1.0")
+	// 设置标准浏览器 User-Agent 避免 403
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := e.client.Do(req)
 	if err != nil {
@@ -47,7 +58,12 @@ func (e *searxngEngine) Search(query string, limit int) ([]SearchResultItem, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			logger.Error("SearXNG 返回错误且读取响应体失败", zap.Int("status", resp.StatusCode), zap.Error(readErr))
+			return nil, fmt.Errorf("SearXNG返回错误 %d, 且读取响应体失败: %w", resp.StatusCode, readErr)
+		}
+		logger.Error("SearXNG 返回错误", zap.Int("status", resp.StatusCode), zap.String("body", string(body)))
 		return nil, fmt.Errorf("SearXNG返回错误 %d: %s", resp.StatusCode, string(body))
 	}
 

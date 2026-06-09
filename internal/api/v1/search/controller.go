@@ -2,14 +2,19 @@
 package search
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"strconv"
 
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/model/dto/request"
 	"YoudaoNoteLm/internal/service"
+	"YoudaoNoteLm/pkg/logger"
 	"YoudaoNoteLm/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Controller 搜索控制器
@@ -45,6 +50,42 @@ func (ctrl *Controller) Search(c *gin.Context) {
 	}
 
 	response.Success(c, result)
+}
+
+// SearchStream 智能搜索（SSE 流式返回）
+func (ctrl *Controller) SearchStream(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	nbID, err := strconv.ParseUint(c.Param("nbId"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的笔记本ID")
+		return
+	}
+
+	var req request.SearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // 禁用 Nginx 缓冲
+
+	c.Stream(func(w io.Writer) bool {
+		eventCh := ctrl.searchService.SearchStream(userID, uint(nbID), req.Query)
+		for event := range eventCh {
+			data, err := json.Marshal(event)
+			if err != nil {
+				logger.Warn("SSE 序列化事件失败", zap.Error(err))
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			c.Writer.Flush()
+		}
+		return false
+	})
 }
 
 // ImportFromURL URL 直接导入

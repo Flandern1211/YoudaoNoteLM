@@ -11,5 +11,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		admin.GET("/config/:group", ctrl.GetConfigs)
 		admin.POST("/config/:group", ctrl.AddConfig)
 		admin.PUT("/config/:group/:key", ctrl.UpdateConfig)
+		admin.DELETE("/config/:group/:key", ctrl.DeleteConfig)
 	}
 }

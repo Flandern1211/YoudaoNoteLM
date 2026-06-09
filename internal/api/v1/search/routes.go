@@ -14,6 +14,7 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	notebooks.Use(middleware.Auth(ctrl.tokenBlacklist))
 	{
 		notebooks.POST("", ctrl.Search)
+		notebooks.POST("/stream", ctrl.SearchStream) // SSE 流式搜索
 		notebooks.POST("/url", ctrl.ImportFromURL)
 		notebooks.POST("/import", ctrl.ImportSearchResults)
 	}

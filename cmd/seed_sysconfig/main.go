@@ -57,47 +57,46 @@ func main() {
 func buildSeedConfigs(cfg *config.Config) []entity.SysConfig {
 	var configs []entity.SysConfig
 
-	// --- ASR 配置 ---
-	asrValue, _ := json.Marshal(map[string]interface{}{
-		"provider":            cfg.External.ASR.Provider,
-		"access_key_id":       cfg.External.ASR.GetString("access_key_id"),
-		"access_key_secret":   cfg.External.ASR.GetString("access_key_secret"),
-		"app_key":             cfg.External.ASR.GetString("app_key"),
-	})
-	configs = append(configs, entity.SysConfig{
-		ConfigGroup: "asr",
-		ConfigKey:   cfg.External.ASR.Provider,
-		ConfigValue: string(asrValue),
-		Enabled:     true,
-		Description: "阿里云智能语音 ASR 服务",
-	})
+	// --- ASR 配置（从环境变量读取，避免硬编码到代码） ---
+	asrAccessKeyID := os.Getenv("ASR_ACCESS_KEY_ID")
+	asrAccessKeySecret := os.Getenv("ASR_ACCESS_KEY_SECRET")
+	asrAppKey := os.Getenv("ASR_APP_KEY")
+	asrProvider := os.Getenv("ASR_PROVIDER")
+	if asrProvider == "" {
+		asrProvider = "aliyun_nls"
+	}
 
-	// --- MarkItDown 配置 ---
-	markitdownValue, _ := json.Marshal(map[string]interface{}{
-		"url": cfg.External.MarkItDown.URL,
-	})
-	configs = append(configs, entity.SysConfig{
-		ConfigGroup: "markitdown",
-		ConfigKey:   "default",
-		ConfigValue: string(markitdownValue),
-		Enabled:     true,
-		Description: "MarkItDown 文档转换服务",
-	})
+	if asrAccessKeyID != "" && asrAccessKeySecret != "" && asrAppKey != "" {
+		asrValue, _ := json.Marshal(map[string]interface{}{
+			"provider":            asrProvider,
+			"access_key_id":       asrAccessKeyID,
+			"access_key_secret":   asrAccessKeySecret,
+			"app_key":             asrAppKey,
+		})
+		configs = append(configs, entity.SysConfig{
+			ConfigGroup: "asr",
+			ConfigKey:   asrProvider,
+			ConfigValue: string(asrValue),
+			Enabled:     true,
+			Description: "阿里云智能语音 ASR 服务",
+		})
+	}
 
-	// --- MinIO 存储配置 ---
-	minioValue, _ := json.Marshal(map[string]interface{}{
-		"endpoint":   cfg.External.MinIO.Endpoint,
-		"access_key": cfg.External.MinIO.AccessKey,
-		"secret_key": cfg.External.MinIO.SecretKey,
-		"bucket":     cfg.External.MinIO.Bucket,
-	})
-	configs = append(configs, entity.SysConfig{
-		ConfigGroup: "storage",
-		ConfigKey:   "minio",
-		ConfigValue: string(minioValue),
-		Enabled:     true,
-		Description: "MinIO 对象存储服务",
-	})
+	// --- 文档转换配置（MarkItDown，从环境变量读取） ---
+	markitdownURL := os.Getenv("MARKITDOWN_URL")
+	if markitdownURL != "" {
+		markitdownValue, _ := json.Marshal(map[string]interface{}{
+			"name":    "markitdown",
+			"api_url": markitdownURL,
+		})
+		configs = append(configs, entity.SysConfig{
+			ConfigGroup: "document",
+			ConfigKey:   "markitdown",
+			ConfigValue: string(markitdownValue),
+			Enabled:     true,
+			Description: "MarkItDown 文档转换服务",
+		})
+	}
 
 	// --- 搜索引擎默认配置（留空，DuckDuckGo 作为兜底不需要配置） ---
 	// 如需添加自定义搜索 API，在此追加：

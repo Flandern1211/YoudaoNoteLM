@@ -16,41 +16,12 @@ type Config struct {
 // ExternalConfig 外部服务配置
 type ExternalConfig struct {
 	MarkItDown MarkItDownConfig `mapstructure:"markitdown"`
-	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
 }
 
 // MarkItDownConfig 文档转换服务配置
 type MarkItDownConfig struct {
 	URL string `mapstructure:"url"`
-}
-
-// ASRConfig ASR 语音转文本配置
-// provider: aliyun_nls / whisper / ...
-// params: 各服务商特有参数，通过 provider 分发
-type ASRConfig struct {
-	Provider string                 `mapstructure:"provider"`
-	Params   map[string]interface{} `mapstructure:"params"`
-}
-
-// GetString 获取参数中的字符串值
-func (c *ASRConfig) GetString(key string) string {
-	if v, ok := c.Params[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-// GetInt 获取参数中的整数值
-func (c *ASRConfig) GetInt(key string) int {
-	if v, ok := c.Params[key]; ok {
-		if n, ok := v.(int); ok {
-			return n
-		}
-	}
-	return 0
 }
 
 // MinIOConfig MinIO 对象存储配置

@@ -30,7 +30,7 @@ func NewLLMClient(name, apiURL, apiKey, model string) LLMClient {
 		apiURL: apiURL,
 		apiKey: apiKey,
 		model:  model,
-		client: &http.Client{Timeout: 120 * time.Second},
+		client: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -123,6 +123,8 @@ func (c *llmClient) ChatWithTools(messages []Message, tools []ToolDef) (*ToolCal
 
 // doRequest 执行 OpenAI API 请求
 func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiResponse, error) {
+	start := time.Now()
+
 	// 转换消息格式
 	oaiMessages := make([]openaiMessage, len(messages))
 	for i, m := range messages {
@@ -135,7 +137,10 @@ func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiRespo
 		if len(m.ToolCalls) > 0 {
 			oaiMessages[i].ToolCalls = make([]openaiToolCall, len(m.ToolCalls))
 			for j, tc := range m.ToolCalls {
-				argsBytes, _ := json.Marshal(tc.Arguments)
+				argsBytes, err := json.Marshal(tc.Arguments)
+				if err != nil {
+					return nil, fmt.Errorf("序列化工具调用参数失败: %w", err)
+				}
 				oaiMessages[i].ToolCalls[j] = openaiToolCall{
 					ID:   tc.ID,
 					Type: "function",
@@ -176,6 +181,8 @@ func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiRespo
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
+	serializeMs := time.Since(start).Milliseconds()
+
 	req, err := http.NewRequest("POST", c.apiURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
@@ -183,16 +190,21 @@ func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiRespo
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
+	reqStart := time.Now()
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("LLM请求失败: %w", err)
 	}
 	defer resp.Body.Close()
 
+	networkMs := time.Since(reqStart).Milliseconds()
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("读取LLM响应失败: %w", err)
 	}
+
+	readMs := time.Since(reqStart).Milliseconds() - networkMs
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("LLM返回错误 %d: %s", resp.StatusCode, string(respBody))
@@ -211,9 +223,15 @@ func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiRespo
 		return nil, fmt.Errorf("LLM返回空结果")
 	}
 
+	totalMs := time.Since(start).Milliseconds()
 	logger.Info("LLM调用成功",
 		zap.String("model", c.model),
 		zap.Int("tool_calls", len(oaiResp.Choices[0].Message.ToolCalls)),
+		zap.Int64("total_ms", totalMs),
+		zap.Int64("serialize_ms", serializeMs),
+		zap.Int64("network_ms", networkMs),
+		zap.Int64("read_ms", readMs),
+		zap.Int("resp_bytes", len(respBody)),
 	)
 
 	return &oaiResp, nil

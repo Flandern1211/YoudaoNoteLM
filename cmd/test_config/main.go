@@ -13,6 +13,8 @@ import (
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
 	"YoudaoNoteLm/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -52,12 +54,15 @@ func main() {
 	sysConfigRepo := repository.NewSysConfigRepository(mysqlDB)
 	userConfigRepo := repository.NewUserConfigRepository(mysqlDB)
 	redisCache := cache.New(redisClient)
-	minioStorage := external.NewMinIOStorage(
+	minioStorage, err := external.NewMinIOStorage(
 		cfg.External.MinIO.Endpoint,
 		cfg.External.MinIO.AccessKey,
 		cfg.External.MinIO.SecretKey,
 		cfg.External.MinIO.Bucket,
 	)
+	if err != nil {
+		logger.Fatal("MinIO 初始化失败", zap.Error(err))
+	}
 
 	// 5. 创建 ConfigService
 	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, minioStorage)

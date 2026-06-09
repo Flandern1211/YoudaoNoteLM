@@ -4,6 +4,12 @@ import "YoudaoNoteLm/internal/model/entity"
 
 // UserConfigService 用户配置服务接口
 type UserConfigService interface {
+	// LLM 配置（基础模型，必需）
+	ListLLMConfigs(userID uint) ([]*entity.UserConfig, error)
+	CreateLLMConfig(userID uint, config *entity.UserConfig) error
+	UpdateLLMConfig(id uint, config *entity.UserConfig) error
+	DeleteLLMConfig(id uint) error
+
 	// 搜索配置
 	ListSearchConfigs(userID uint) ([]*entity.UserConfig, error)
 	CreateSearchConfig(userID uint, config *entity.UserConfig) error
@@ -21,4 +27,7 @@ type UserConfigService interface {
 	CreateEmbeddingConfig(userID uint, config *entity.UserConfig) error
 	UpdateEmbeddingConfig(id uint, config *entity.UserConfig) error
 	DeleteEmbeddingConfig(id uint) error
+
+	// 获取当前生效的配置（用户配置 > 系统配置 > 默认值）
+	GetActiveConfig(userID uint, configType string) (*entity.UserConfig, error)
 }

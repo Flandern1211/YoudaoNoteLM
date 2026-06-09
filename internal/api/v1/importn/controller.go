@@ -141,3 +141,26 @@ func (ctrl *Controller) GetTask(c *gin.Context) {
 
 	response.Success(c, task)
 }
+
+// DeleteTask 删除导入任务
+// @Summary 删除导入任务
+// @Description 根据任务ID删除导入任务（运行中的任务会被取消）
+// @Tags 导入
+// @Produce json
+// @Param taskId path string true "任务ID"
+// @Success 200 {object} response.Response
+// @Router /api/v1/import/tasks/{taskId} [delete]
+func (ctrl *Controller) DeleteTask(c *gin.Context) {
+	taskID := c.Param("taskId")
+	if taskID == "" {
+		response.BadRequest(c, "无效的任务ID")
+		return
+	}
+
+	if err := ctrl.importerService.DeleteImportTask(taskID); err != nil {
+		response.BizError(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, "任务已删除", nil)
+}

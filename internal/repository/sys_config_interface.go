@@ -7,5 +7,6 @@ type SysConfigRepository interface {
 	FindByGroupAndKey(group, key string) (*entity.SysConfig, error)
 	Create(config *entity.SysConfig) error
 	Update(config *entity.SysConfig) error
+	Delete(id uint) error
 	GetConfigStatusSummary() ([]map[string]interface{}, error)
 }

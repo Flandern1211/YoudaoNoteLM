@@ -10,6 +10,12 @@ import (
 
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
+
+	// 触发 provider 注册（测试环境也需要）
+	_ "YoudaoNoteLm/internal/service/external/asr"
+	_ "YoudaoNoteLm/internal/service/external/embedding"
+	_ "YoudaoNoteLm/internal/service/external/llm"
+	_ "YoudaoNoteLm/internal/service/external/search"
 )
 
 // ============================================================
@@ -88,6 +94,11 @@ func (r *mockUserConfigRepo) FindByUserAndType(userID uint, configType string) (
 		}
 	}
 	return nil, nil
+}
+
+func (r *mockUserConfigRepo) FindByUserAndTypeIncludingDeleted(userID uint, configType string) (*entity.UserConfig, error) {
+	// Mock 实现：简单委托给 FindByUserAndType
+	return r.FindByUserAndType(userID, configType)
 }
 
 func (r *mockUserConfigRepo) FindByID(id uint) (*entity.UserConfig, error) {
@@ -202,12 +213,14 @@ func TestGetSearchEngine_UserConfig_CacheHit(t *testing.T) {
 
 	// 预填充缓存
 	cfg := entity.UserConfig{
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "MySearch",
-		APIURL:     "https://api.example.com/search",
-		APIKey:     "key123",
-		Enabled:    true,
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "MySearch",
+		APIURL:      "https://api.example.com/search",
+		APIKey:      "key123",
+		ExtraConfig: `{"name":"MySearch"}`,
+		Enabled:     true,
 	}
 	cache.Set(context.Background(), "config:user:1:search", cfg, time.Minute)
 
@@ -228,12 +241,14 @@ func TestGetSearchEngine_UserConfig_DBHit(t *testing.T) {
 
 	// 写入 DB
 	userRepo.Create(&entity.UserConfig{
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "DBSearch",
-		APIURL:     "https://api.db.com/search",
-		APIKey:     "dbkey",
-		Enabled:    true,
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "DBSearch",
+		APIURL:      "https://api.db.com/search",
+		APIKey:      "dbkey",
+		ExtraConfig: `{"name":"DBSearch"}`,
+		Enabled:     true,
 	})
 
 	engine, err := svc.GetSearchEngine(1)
@@ -264,29 +279,23 @@ func TestGetSearchEngine_UserConfig_Disabled(t *testing.T) {
 		Enabled:    false,
 	})
 
-	// 无系统配置 → 应降级到 DuckDuckGo
-	engine, err := svc.GetSearchEngine(1)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.Name() != "duckduckgo" {
-		t.Errorf("expected 'duckduckgo' fallback, got '%s'", engine.Name())
+	// 无系统配置且无兜底 provider → 应返回错误
+	_, err := svc.GetSearchEngine(1)
+	if err == nil {
+		t.Fatal("expected error when no config and no default provider")
 	}
 }
 
-func TestGetSearchEngine_Fallback_DuckDuckGo(t *testing.T) {
+func TestGetSearchEngine_NoConfig_ReturnsError(t *testing.T) {
 	cache := newMockCache()
 	userRepo := newMockUserConfigRepo()
 	sysRepo := newMockSysConfigRepo()
 	svc := newTestConfigService(userRepo, sysRepo, cache)
 
-	// 无任何配置 → DuckDuckGo 兜底
-	engine, err := svc.GetSearchEngine(999)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.Name() != "duckduckgo" {
-		t.Errorf("expected 'duckduckgo', got '%s'", engine.Name())
+	// 无任何配置且无兜底 provider → 返回错误
+	_, err := svc.GetSearchEngine(999)
+	if err == nil {
+		t.Fatal("expected error when no config and no default provider")
 	}
 }
 
@@ -305,6 +314,7 @@ func TestGetASRService_UserConfig_CacheHit(t *testing.T) {
 		ConfigType: "asr",
 		Provider:   "aliyun_nls",
 		APIKey:     "access_key_id",
+		ExtraConfig: `{"access_key_id":"key","access_key_secret":"secret","app_key":"app"}`,
 		Enabled:    true,
 	}
 	cache.Set(context.Background(), "config:user:1:asr", cfg, time.Minute)
@@ -329,6 +339,7 @@ func TestGetASRService_UserConfig_DBHit(t *testing.T) {
 		ConfigType: "asr",
 		Provider:   "aliyun_nls",
 		APIKey:     "key",
+		ExtraConfig: `{"access_key_id":"key","access_key_secret":"secret","app_key":"app"}`,
 		Enabled:    true,
 	})
 
@@ -528,10 +539,12 @@ func TestCachePolicy_WriteInvalidation(t *testing.T) {
 
 	// 1. 写入 DB + 缓存
 	userRepo.Create(&entity.UserConfig{
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "V1",
-		Enabled:    true,
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "V1",
+		ExtraConfig: `{"name":"V1"}`,
+		Enabled:     true,
 	})
 	svc.GetSearchEngine(1) // 触发缓存回填
 	if !cache.has("config:user:1:search") {
@@ -541,6 +554,7 @@ func TestCachePolicy_WriteInvalidation(t *testing.T) {
 	// 2. 更新 → 缓存失效
 	cfg, _ := userRepo.FindByUserAndType(1, "search")
 	cfg.Name = "V2"
+	cfg.ExtraConfig = `{"name":"V2"}`
 	svc.UpdateUserConfig(cfg)
 	if cache.has("config:user:1:search") {
 		t.Error("cache should be invalidated after update")
@@ -561,10 +575,12 @@ func TestCachePolicy_CacheThenDB(t *testing.T) {
 
 	// 写入 DB
 	userRepo.Create(&entity.UserConfig{
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "CachedEngine",
-		Enabled:    true,
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "CachedEngine",
+		ExtraConfig: `{"name":"CachedEngine"}`,
+		Enabled:     true,
 	})
 
 	// 第一次查询 → DB → 回填缓存
@@ -575,11 +591,13 @@ func TestCachePolicy_CacheThenDB(t *testing.T) {
 
 	// 修改 DB（不经过 service，不触发缓存清除）
 	userRepo.Update(&entity.UserConfig{
-		BaseEntity: entity.BaseEntity{ID: 1},
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "StaleInCache",
-		Enabled:    true,
+		BaseEntity:  entity.BaseEntity{ID: 1},
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "StaleInCache",
+		ExtraConfig: `{"name":"StaleInCache"}`,
+		Enabled:     true,
 	})
 
 	// 第二次查询 → 缓存命中（旧值）
@@ -602,8 +620,8 @@ func TestGetSearchEngine_SysConfig_Fallback(t *testing.T) {
 	// 无用户配置，有系统配置
 	sysRepo.Create(&entity.SysConfig{
 		ConfigGroup: "search",
-		ConfigKey:   "serper",
-		ConfigValue: `{"name":"serper","api_url":"https://google.serper.dev/search","api_key":"key123"}`,
+		ConfigKey:   "custom",
+		ConfigValue: `{"provider":"custom","name":"serper","api_url":"https://google.serper.dev/search","api_key":"key123"}`,
 		Enabled:     true,
 		Description: "Serper 搜索 API",
 	})
@@ -627,8 +645,8 @@ func TestGetSearchEngine_SysConfig_CacheHit(t *testing.T) {
 	sysConfigs := []*entity.SysConfig{
 		{
 			ConfigGroup: "search",
-			ConfigKey:   "cached_engine",
-			ConfigValue: `{"name":"cached","api_url":"http://cached.com","api_key":"k"}`,
+			ConfigKey:   "custom",
+			ConfigValue: `{"provider":"custom","name":"cached","api_url":"http://cached.com","api_key":"k"}`,
 			Enabled:     true,
 		},
 	}
@@ -681,13 +699,10 @@ func TestGetSearchEngine_SysConfig_Disabled(t *testing.T) {
 		Enabled:     false,
 	})
 
-	// 应降级到 DuckDuckGo
-	engine, err := svc.GetSearchEngine(999)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.Name() != "duckduckgo" {
-		t.Errorf("expected 'duckduckgo' fallback when sys_config disabled, got '%s'", engine.Name())
+	// 无可用配置且无兜底 provider → 返回错误
+	_, err := svc.GetSearchEngine(999)
+	if err == nil {
+		t.Fatal("expected error when sys_config disabled and no default provider")
 	}
 }
 
@@ -697,7 +712,7 @@ func TestGetSearchEngine_SysConfig_InvalidJSON(t *testing.T) {
 	sysRepo := newMockSysConfigRepo()
 	svc := newTestConfigService(userRepo, sysRepo, cache)
 
-	// 无效 JSON → 跳过该条，降级到 DuckDuckGo
+	// 无效 JSON → 跳过该条，无可用配置 → 返回错误
 	sysRepo.Create(&entity.SysConfig{
 		ConfigGroup: "search",
 		ConfigKey:   "bad_json",
@@ -705,12 +720,9 @@ func TestGetSearchEngine_SysConfig_InvalidJSON(t *testing.T) {
 		Enabled:     true,
 	})
 
-	engine, err := svc.GetSearchEngine(999)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.Name() != "duckduckgo" {
-		t.Errorf("expected 'duckduckgo' fallback for invalid JSON, got '%s'", engine.Name())
+	_, err := svc.GetSearchEngine(999)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON and no default provider")
 	}
 }
 
@@ -720,7 +732,7 @@ func TestGetSearchEngine_SysConfig_MissingAPIURL(t *testing.T) {
 	sysRepo := newMockSysConfigRepo()
 	svc := newTestConfigService(userRepo, sysRepo, cache)
 
-	// 缺少 api_url → 跳过，降级到 DuckDuckGo
+	// 缺少 api_url → 跳过，无可用配置 → 返回错误
 	sysRepo.Create(&entity.SysConfig{
 		ConfigGroup: "search",
 		ConfigKey:   "no_url",
@@ -728,12 +740,9 @@ func TestGetSearchEngine_SysConfig_MissingAPIURL(t *testing.T) {
 		Enabled:     true,
 	})
 
-	engine, err := svc.GetSearchEngine(999)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.Name() != "duckduckgo" {
-		t.Errorf("expected 'duckduckgo' fallback for missing api_url, got '%s'", engine.Name())
+	_, err := svc.GetSearchEngine(999)
+	if err == nil {
+		t.Fatal("expected error for missing api_url and no default provider")
 	}
 }
 
@@ -747,35 +756,40 @@ func TestGetSearchEngine_FullFallbackChain(t *testing.T) {
 	sysRepo := newMockSysConfigRepo()
 	svc := newTestConfigService(userRepo, sysRepo, cache)
 
-	// 第一层：无任何配置 → DuckDuckGo
-	engine, _ := svc.GetSearchEngine(1)
-	if engine.Name() != "duckduckgo" {
-		t.Fatalf("step 1: expected 'duckduckgo', got '%s'", engine.Name())
+	// 第一层：无任何配置 → 返回错误
+	_, err := svc.GetSearchEngine(1)
+	if err == nil {
+		t.Fatal("step 1: expected error when no config and no default provider")
 	}
 
 	// 第二层：添加系统配置 → sys_config 引擎
 	sysRepo.Create(&entity.SysConfig{
 		ConfigGroup: "search",
-		ConfigKey:   "sys_engine",
-		ConfigValue: `{"name":"sys_engine","api_url":"http://sys.com","api_key":"k"}`,
+		ConfigKey:   "custom",
+		ConfigValue: `{"provider":"custom","name":"sys_engine","api_url":"http://sys.com","api_key":"k"}`,
 		Enabled:     true,
 	})
 	// 清缓存，强制重新查询
 	cache.Delete(context.Background(), "config:sys:search")
 
-	engine, _ = svc.GetSearchEngine(1)
+	engine, err := svc.GetSearchEngine(1)
+	if err != nil {
+		t.Fatalf("step 2: unexpected error: %v", err)
+	}
 	if engine.Name() != "sys_engine" {
 		t.Fatalf("step 2: expected 'sys_engine', got '%s'", engine.Name())
 	}
 
 	// 第三层：添加用户配置 → 用户引擎优先
 	userRepo.Create(&entity.UserConfig{
-		UserID:     1,
-		ConfigType: "search",
-		Name:       "user_engine",
-		APIURL:     "http://user.com",
-		APIKey:     "uk",
-		Enabled:    true,
+		UserID:      1,
+		ConfigType:  "search",
+		Provider:    "custom",
+		Name:        "user_engine",
+		APIURL:      "http://user.com",
+		APIKey:      "uk",
+		ExtraConfig: `{"name":"user_engine"}`,
+		Enabled:     true,
 	})
 
 	engine, _ = svc.GetSearchEngine(1)

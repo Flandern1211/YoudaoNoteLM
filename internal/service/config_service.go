@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"YoudaoNoteLm/internal/model/entity"
@@ -20,16 +21,32 @@ const (
 	sysConfigTTL  = 5 * time.Minute  // 系统配置缓存 5min
 )
 
+// ChatModelConfig Eino ChatModel 配置
+type ChatModelConfig struct {
+	Provider string // 服务商
+	BaseURL  string // API 地址
+	APIKey   string // API 密钥
+	Model    string // 模型名称
+}
+
 // ConfigService 配置路由服务接口
 type ConfigService interface {
 	GetSearchEngine(userID uint) (external.SearchEngine, error)
 	GetASRService(userID uint) (external.ASRService, error)
 	GetEmbeddingService(userID uint) (external.EmbeddingService, error)
+	GetLLMClient(userID uint) (external.LLMClient, error)
+	GetChatModelConfig(userID uint) (*ChatModelConfig, error)
+	GetDocumentConverter() (external.DocumentConverter, error) // 文档转换（系统级）
+
+	// 获取配置（用于 API）
+	GetUserConfig(userID uint, configType string) (*entity.UserConfig, error)
+	GetSysConfig(configType string) (*entity.SysConfig, error)
 
 	// 配置管理（带缓存失效）
 	UpdateUserConfig(config *entity.UserConfig) error
 	DeleteUserConfig(userID uint, configType string) error
 	ClearUserConfigCache(userID uint, configType string)
+	ClearSysConfigCache(group string)
 }
 
 type configService struct {
@@ -37,6 +54,7 @@ type configService struct {
 	userConfigRepo repository.UserConfigRepository
 	cache          CacheStore
 	storage        external.FileStorage // ASR 需要注入存储服务
+	registry       *external.Registry  // Provider 注册表
 }
 
 func NewConfigService(
@@ -50,6 +68,7 @@ func NewConfigService(
 		userConfigRepo: userConfigRepo,
 		cache:          cache,
 		storage:        storage,
+		registry:       external.GetGlobalRegistry(), // 使用全局 Registry
 	}
 }
 
@@ -65,100 +84,138 @@ func sysConfigCacheKey(group string) string {
 
 // --- 查询（带缓存） ---
 
-func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, error) {
+// getService 统一获取服务（用户配置 → sys_config → 兜底）
+// serviceType: "search" / "asr" / "llm" / "embedding"
+func (s *configService) getService(userID uint, serviceType string) (interface{}, error) {
 	ctx := context.Background()
 
-	// 1. 查用户搜索配置（先查缓存）
-	cacheKey := userConfigCacheKey(userID, "search")
+	// 1. 查用户配置（先查缓存）
+	cacheKey := userConfigCacheKey(userID, serviceType)
 	var userCfg entity.UserConfig
 	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
-		logger.Debug("用户搜索配置缓存命中", zap.Uint("user_id", userID))
-		return external.NewCustomEngine(userCfg.Name, userCfg.APIURL, userCfg.APIKey), nil
+		logger.Debug("用户配置缓存命中",
+			zap.Uint("user_id", userID),
+			zap.String("service_type", serviceType))
+		sc := external.NewServiceConfigFromEntity(
+			userCfg.Provider, userCfg.APIURL, userCfg.APIKey,
+			userCfg.Model, userCfg.ExtraConfig)
+		return s.registry.Create(serviceType, userCfg.Provider, sc)
 	}
 
 	// 缓存未命中，查 DB
-	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "search")
+	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, serviceType)
 	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
-		// 回填缓存
-		_ = s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL)
-		return external.NewCustomEngine(userCfgPtr.Name, userCfgPtr.APIURL, userCfgPtr.APIKey), nil
+		if cacheErr := s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL); cacheErr != nil {
+			logger.Warn("缓存用户配置失败", zap.String("key", cacheKey), zap.Error(cacheErr))
+		}
+		sc := external.NewServiceConfigFromEntity(
+			userCfgPtr.Provider, userCfgPtr.APIURL, userCfgPtr.APIKey,
+			userCfgPtr.Model, userCfgPtr.ExtraConfig)
+		return s.registry.Create(serviceType, userCfgPtr.Provider, sc)
 	}
 
 	// 2. 降级到系统内置配置
-	if engine := s.getSysSearchEngine(ctx); engine != nil {
-		return engine, nil
+	if svc := s.getSysService(ctx, serviceType); svc != nil {
+		return svc, nil
 	}
 
-	// 3. DuckDuckGo 兜底
-	logger.Info("使用 DuckDuckGo 兜底搜索引擎")
-	return external.NewDuckDuckGoEngine(), nil
+	return nil, fmt.Errorf("未配置 %s 服务，请在用户配置或系统配置中添加", serviceType)
+}
+
+// getSysService 从 sys_config 查找并创建服务
+func (s *configService) getSysService(ctx context.Context, serviceType string) interface{} {
+	sysCacheKey := sysConfigCacheKey(serviceType)
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, serviceType)
+	if err != nil {
+		return nil
+	}
+
+	for _, builtin := range builtins {
+		if !builtin.Enabled {
+			continue
+		}
+		params, err := parseSysConfigValue(builtin.ConfigValue)
+		if err != nil {
+			logger.Error("解析系统配置失败",
+				zap.String("service_type", serviceType),
+				zap.String("key", builtin.ConfigKey),
+				zap.Error(err))
+			continue
+		}
+
+		provider := params.Provider
+		if provider == "" {
+			provider = builtin.ConfigKey // 兼容旧数据
+		}
+
+		sc := external.NewServiceConfigFromEntity(
+			provider, params.APIURL, params.APIKey, "", "")
+
+		// 也解析完整 JSON 到 ExtraConfig
+		var fullParams map[string]interface{}
+		if jsonErr := json.Unmarshal([]byte(builtin.ConfigValue), &fullParams); jsonErr == nil {
+			sc.ExtraConfig = fullParams
+			// 从 ExtraConfig 补充 model
+			if sc.Model == "" {
+				if v, ok := fullParams["model"].(string); ok {
+					sc.Model = v
+				}
+			}
+		}
+
+		svc, err := s.registry.Create(serviceType, provider, sc)
+		if err != nil {
+			logger.Error("创建系统服务失败",
+				zap.String("service_type", serviceType),
+				zap.String("key", builtin.ConfigKey),
+				zap.Error(err))
+			continue
+		}
+
+		logger.Info("使用系统内置配置",
+			zap.String("service_type", serviceType),
+			zap.String("key", builtin.ConfigKey))
+		return svc
+	}
+	return nil
+}
+
+func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, error) {
+	svc, err := s.getService(userID, "search")
+	if err != nil {
+		return nil, err
+	}
+	engine, ok := svc.(external.SearchEngine)
+	if !ok {
+		return nil, fmt.Errorf("search provider 返回的类型不正确")
+	}
+	return engine, nil
 }
 
 func (s *configService) GetASRService(userID uint) (external.ASRService, error) {
-	ctx := context.Background()
-
-	// 1. 查用户ASR配置（先查缓存）
-	cacheKey := userConfigCacheKey(userID, "asr")
-	var userCfg entity.UserConfig
-	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
-		logger.Debug("用户ASR配置缓存命中", zap.Uint("user_id", userID))
-		svc := external.NewASRServiceFromDB(userCfg.Provider, userCfg.APIURL, userCfg.APIKey, userCfg.ExtraConfig)
-		if svc == nil {
-			return nil, bizerrors.New(bizerrors.CodeASTranscriptionFailed, "不支持的ASR服务商: "+userCfg.Provider)
-		}
-		s.injectStorage(svc)
-		return svc, nil
+	svc, err := s.getService(userID, "asr")
+	if err != nil {
+		return nil, err
 	}
-
-	// 缓存未命中，查 DB
-	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "asr")
-	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
-		_ = s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL)
-		svc := external.NewASRServiceFromDB(userCfgPtr.Provider, userCfgPtr.APIURL, userCfgPtr.APIKey, userCfgPtr.ExtraConfig)
-		if svc == nil {
-			return nil, bizerrors.New(bizerrors.CodeASTranscriptionFailed, "不支持的ASR服务商: "+userCfgPtr.Provider)
-		}
-		s.injectStorage(svc)
-		return svc, nil
+	asrSvc, ok := svc.(external.ASRService)
+	if !ok {
+		return nil, fmt.Errorf("asr provider 返回的类型不正确")
 	}
-
-	// 2. 降级到系统内置配置
-	if svc := s.getSysASRService(ctx); svc != nil {
-		return svc, nil
-	}
-
-	// 3. 无可用配置
-	return nil, bizerrors.New(bizerrors.CodeASTranscriptionFailed, "未配置ASR服务")
+	// 注入存储服务
+	s.injectStorage(asrSvc)
+	return asrSvc, nil
 }
 
 func (s *configService) GetEmbeddingService(userID uint) (external.EmbeddingService, error) {
-	ctx := context.Background()
-
-	// 1. 查用户Embedding配置（先查缓存）
-	cacheKey := userConfigCacheKey(userID, "embedding")
-	var userCfg entity.UserConfig
-	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
-		logger.Debug("用户Embedding配置缓存命中", zap.Uint("user_id", userID))
-		// TODO: 根据 provider 创建对应的 EmbeddingService
+	svc, err := s.getService(userID, "embedding")
+	if err != nil {
+		return nil, err
 	}
-
-	// 缓存未命中，查 DB
-	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "embedding")
-	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
-		_ = s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL)
-		logger.Info("使用用户自定义Embedding配置",
-			zap.Uint("user_id", userID),
-			zap.String("provider", userCfgPtr.Provider),
-		)
+	embedSvc, ok := svc.(external.EmbeddingService)
+	if !ok {
+		return nil, fmt.Errorf("embedding provider 返回的类型不正确")
 	}
-
-	// 2. 降级到系统内置配置
-	if svc := s.getSysEmbeddingService(ctx); svc != nil {
-		return svc, nil
-	}
-
-	// 3. 无可用配置
-	return nil, bizerrors.New(bizerrors.CodeInternalServiceError, "未配置Embedding服务")
+	return embedSvc, nil
 }
 
 // --- 配置管理（写入时失效） ---
@@ -201,6 +258,82 @@ func (s *configService) ClearUserConfigCache(userID uint, configType string) {
 	}
 }
 
+// ClearSysConfigCache 清除系统配置缓存
+func (s *configService) ClearSysConfigCache(group string) {
+	key := sysConfigCacheKey(group)
+	if err := s.cache.Delete(context.Background(), key); err != nil {
+		logger.Warn("清除系统配置缓存失败",
+			zap.String("group", group),
+			zap.Error(err),
+		)
+	}
+}
+
+// GetUserConfig 获取用户配置
+func (s *configService) GetUserConfig(userID uint, configType string) (*entity.UserConfig, error) {
+	ctx := context.Background()
+
+	// 先查缓存
+	cacheKey := userConfigCacheKey(userID, configType)
+	var userCfg entity.UserConfig
+	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil {
+		return &userCfg, nil
+	}
+
+	// 查 DB
+	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, configType)
+	if err != nil {
+		return nil, err
+	}
+	if userCfgPtr != nil {
+		if cacheErr := s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL); cacheErr != nil {
+			logger.Warn("缓存用户配置失败", zap.String("key", cacheKey), zap.Error(cacheErr))
+		}
+	}
+	return userCfgPtr, nil
+}
+
+// GetSysConfig 获取系统配置（返回第一个启用的配置）
+func (s *configService) GetSysConfig(configType string) (*entity.SysConfig, error) {
+	ctx := context.Background()
+	sysCacheKey := sysConfigCacheKey(configType)
+
+	// 先尝试从缓存读取
+	var builtins []*entity.SysConfig
+	if err := s.cache.Get(ctx, sysCacheKey, &builtins); err == nil {
+		for _, b := range builtins {
+			if b.Enabled {
+				return b, nil
+			}
+		}
+		// 缓存中没有启用的配置，清除缓存并重新读取
+		if delErr := s.cache.Delete(ctx, sysCacheKey); delErr != nil {
+			logger.Warn("清除系统配置缓存失败", zap.String("key", sysCacheKey), zap.Error(delErr))
+		}
+	}
+
+	// 从数据库读取
+	builtins, err := s.sysConfigRepo.FindByGroup(configType)
+	if err != nil {
+		return nil, err
+	}
+	if len(builtins) == 0 {
+		return nil, fmt.Errorf("no sys_config for %s", configType)
+	}
+
+	// 更新缓存
+	if cacheErr := s.cache.Set(ctx, sysCacheKey, builtins, sysConfigTTL); cacheErr != nil {
+		logger.Warn("缓存系统配置失败", zap.String("key", sysCacheKey), zap.Error(cacheErr))
+	}
+
+	for _, b := range builtins {
+		if b.Enabled {
+			return b, nil
+		}
+	}
+	return nil, fmt.Errorf("no enabled sys_config for %s", configType)
+}
+
 // injectStorage 注入文件存储到 ASR 服务（如果支持）
 func (s *configService) injectStorage(svc external.ASRService) {
 	if svc == nil || s.storage == nil {
@@ -218,92 +351,151 @@ type sysConfigParams struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	APIURL   string `json:"api_url"`
+	URL      string `json:"url"` // 兼容旧格式（MarkItDown 用 url 字段）
 	APIKey   string `json:"api_key"`
 }
 
-// getSysSearchEngine 从 sys_config 查找并创建搜索引擎
-func (s *configService) getSysSearchEngine(ctx context.Context) external.SearchEngine {
-	sysCacheKey := sysConfigCacheKey("search")
-	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "search")
-	if err != nil {
-		return nil
+// GetAPIURL 获取 API 地址（兼容 url 和 api_url 两种字段名）
+func (p *sysConfigParams) GetAPIURL() string {
+	if p.APIURL != "" {
+		return p.APIURL
 	}
-
-	for _, builtin := range builtins {
-		if !builtin.Enabled {
-			continue
-		}
-		var params sysConfigParams
-		if err := json.Unmarshal([]byte(builtin.ConfigValue), &params); err != nil {
-			logger.Error("解析系统搜索配置失败", zap.String("key", builtin.ConfigKey), zap.Error(err))
-			continue
-		}
-		if params.APIURL == "" {
-			continue
-		}
-		name := params.Name
-		if name == "" {
-			name = builtin.ConfigKey
-		}
-		logger.Info("使用系统内置搜索配置", zap.String("key", builtin.ConfigKey))
-		return external.NewCustomEngine(name, params.APIURL, params.APIKey)
-	}
-	return nil
+	return p.URL
 }
 
-// getSysASRService 从 sys_config 查找并创建 ASR 服务
-func (s *configService) getSysASRService(ctx context.Context) external.ASRService {
-	sysCacheKey := sysConfigCacheKey("asr")
-	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "asr")
+// parseSysConfigValue 解析 sys_config.config_value，兼容 JSON 对象和纯字符串（URL）两种格式
+func parseSysConfigValue(value string) (sysConfigParams, error) {
+	var params sysConfigParams
+	// 先尝试 JSON 解析
+	if err := json.Unmarshal([]byte(value), &params); err == nil {
+		return params, nil
+	}
+	// JSON 解析失败，尝试作为纯 URL 字符串处理
+	// 去除可能的引号
+	cleaned := value
+	if len(cleaned) >= 2 && cleaned[0] == '"' && cleaned[len(cleaned)-1] == '"' {
+		cleaned = cleaned[1 : len(cleaned)-1]
+	}
+	trimmed := strings.TrimSpace(cleaned)
+	if len(trimmed) >= 4 && (trimmed[:4] == "http" || trimmed[:3] == "ws:") {
+		params.APIURL = trimmed
+		return params, nil
+	}
+	return params, fmt.Errorf("无法解析配置值: %s", value)
+}
+
+// GetLLMClient 获取用户的 LLM 客户端
+func (s *configService) GetLLMClient(userID uint) (external.LLMClient, error) {
+	svc, err := s.getService(userID, "llm")
 	if err != nil {
-		return nil
+		return nil, err
+	}
+	client, ok := svc.(external.LLMClient)
+	if !ok {
+		return nil, fmt.Errorf("llm provider 返回的类型不正确")
+	}
+	return client, nil
+}
+
+// GetChatModelConfig 获取用户的 ChatModel 配置（供 Eino 使用）
+func (s *configService) GetChatModelConfig(userID uint) (*ChatModelConfig, error) {
+	ctx := context.Background()
+
+	// 1. 查用户 LLM 配置（先查缓存）
+	cacheKey := userConfigCacheKey(userID, "llm")
+	var userCfg entity.UserConfig
+	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
+		return s.buildChatModelConfig(userCfg.Provider, userCfg.APIURL, userCfg.APIKey, userCfg.Model, userCfg.ExtraConfig)
 	}
 
-	for _, builtin := range builtins {
-		if !builtin.Enabled {
-			continue
+	// 缓存未命中，查 DB
+	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "llm")
+	if err == nil && userCfgPtr != nil && userCfgPtr.Enabled {
+		if cacheErr := s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL); cacheErr != nil {
+			logger.Warn("缓存用户LLM配置失败", zap.String("key", cacheKey), zap.Error(cacheErr))
 		}
-		var params map[string]interface{}
-		if err := json.Unmarshal([]byte(builtin.ConfigValue), &params); err != nil {
-			logger.Error("解析系统ASR配置失败", zap.String("key", builtin.ConfigKey), zap.Error(err))
-			continue
-		}
-		getStr := func(key string) string {
-			if v, ok := params[key].(string); ok {
-				return v
+		return s.buildChatModelConfig(userCfgPtr.Provider, userCfgPtr.APIURL, userCfgPtr.APIKey, userCfgPtr.Model, userCfgPtr.ExtraConfig)
+	}
+
+	// 2. 降级到系统内置配置
+	sysCacheKey := sysConfigCacheKey("llm")
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "llm")
+	if err == nil {
+		for _, builtin := range builtins {
+			if !builtin.Enabled {
+				continue
 			}
-			return ""
+			var params map[string]interface{}
+			if err := json.Unmarshal([]byte(builtin.ConfigValue), &params); err != nil {
+				// 尝试作为纯字符串处理
+				params = map[string]interface{}{
+					"api_url": builtin.ConfigValue,
+				}
+			}
+			getStr := func(key string) string {
+				if v, ok := params[key].(string); ok {
+					return v
+				}
+				return ""
+			}
+			cfg, err := s.buildChatModelConfig(getStr("provider"), getStr("api_url"), getStr("api_key"), getStr("model"), "")
+			if err == nil {
+				return cfg, nil
+			}
 		}
-		provider := getStr("provider")
-		apiKey := getStr("api_key")
-		extra, _ := json.Marshal(params) // 整个 JSON 作为 extraConfig
-		svc := external.NewASRServiceFromDB(provider, "", apiKey, string(extra))
-		if svc == nil {
-			continue
-		}
-		s.injectStorage(svc)
-		logger.Info("使用系统内置ASR配置", zap.String("key", builtin.ConfigKey))
-		return svc
 	}
-	return nil
+
+	return nil, bizerrors.New(bizerrors.CodeInternalServiceError, "未配置LLM服务")
 }
 
-// getSysEmbeddingService 从 sys_config 查找并创建 Embedding 服务
-func (s *configService) getSysEmbeddingService(ctx context.Context) external.EmbeddingService {
-	sysCacheKey := sysConfigCacheKey("embedding")
-	builtins, err := s.getSysConfigs(ctx, sysCacheKey, "embedding")
-	if err != nil {
-		return nil
+// buildChatModelConfig 构建 ChatModelConfig
+func (s *configService) buildChatModelConfig(provider, apiURL, apiKey, model, extraConfig string) (*ChatModelConfig, error) {
+	// 如果显式传入的 model 为空，尝试从 ExtraConfig 中获取
+	if model == "" && extraConfig != "" {
+		var config map[string]interface{}
+		if err := json.Unmarshal([]byte(extraConfig), &config); err == nil {
+			if v, ok := config["model"].(string); ok {
+				model = v
+			}
+		}
 	}
 
-	for _, builtin := range builtins {
-		if !builtin.Enabled {
-			continue
-		}
-		// TODO: 后续实现 EmbeddingService provider 时解析 config_value 创建服务
-		logger.Info("发现系统内置Embedding配置（暂未实现）", zap.String("key", builtin.ConfigKey))
+	if model == "" {
+		return nil, fmt.Errorf("LLM模型名称未配置")
 	}
-	return nil
+
+	return &ChatModelConfig{
+		Provider: provider,
+		BaseURL:  apiURL,
+		APIKey:   apiKey,
+		Model:    model,
+	}, nil
+}
+
+// createLLMClientFromConfig 根据配置创建 LLM 客户端
+// 保留此方法供 GetChatModelConfig 内部使用
+func (s *configService) createLLMClientFromConfig(provider, apiURL, apiKey, model, extraConfig string) (external.LLMClient, error) {
+	// 如果显式传入的 model 为空，尝试从 ExtraConfig 中获取
+	if model == "" && extraConfig != "" {
+		var config map[string]interface{}
+		if err := json.Unmarshal([]byte(extraConfig), &config); err == nil {
+			if v, ok := config["model"].(string); ok {
+				model = v
+			}
+		}
+	}
+
+	if model == "" {
+		return nil, fmt.Errorf("LLM模型名称未配置")
+	}
+
+	switch provider {
+	case "openai", "deepseek", "zhipu", "qwen":
+		// 使用 OpenAI 兼容接口
+		return external.NewLLMClient(provider, apiURL, apiKey, model), nil
+	default:
+		return nil, fmt.Errorf("不支持的LLM服务商: %s", provider)
+	}
 }
 
 // getSysConfigs 获取系统配置（带缓存）
@@ -321,6 +513,78 @@ func (s *configService) getSysConfigs(ctx context.Context, cacheKey, group strin
 		return nil, fmt.Errorf("no sys_config for group %s", group)
 	}
 
-	_ = s.cache.Set(ctx, cacheKey, builtins, sysConfigTTL)
+	if cacheErr := s.cache.Set(ctx, cacheKey, builtins, sysConfigTTL); cacheErr != nil {
+		logger.Warn("缓存系统配置列表失败", zap.String("key", cacheKey), zap.Error(cacheErr))
+	}
 	return builtins, nil
+}
+
+// GetDocumentConverter 获取文档转换 Provider（系统级配置，不区分用户）
+func (s *configService) GetDocumentConverter() (external.DocumentConverter, error) {
+	ctx := context.Background()
+
+	// 检查是否已缓存转换器
+	converterCacheKey := "document_converter_instance"
+	var cachedConverter external.DocumentConverter
+	if err := s.cache.Get(ctx, converterCacheKey, &cachedConverter); err == nil && cachedConverter != nil {
+		return cachedConverter, nil
+	}
+
+	// 1. 查系统配置
+	sysCacheKey := sysConfigCacheKey(external.DocumentServiceType)
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, external.DocumentServiceType)
+	if err == nil {
+		for _, builtin := range builtins {
+			if !builtin.Enabled {
+				continue
+			}
+
+			provider := builtin.ConfigKey
+			params, parseErr := parseSysConfigValue(builtin.ConfigValue)
+			if parseErr == nil && params.Provider != "" {
+				provider = params.Provider
+			}
+			// 兼容 name 字段作为 provider 名称
+			if parseErr == nil && params.Name != "" && params.Provider == "" {
+				provider = params.Name
+			}
+
+			apiURL := params.GetAPIURL()
+
+			sc := external.NewServiceConfigFromEntity(
+				provider, apiURL, params.APIKey, "", "")
+
+			// 解析完整 JSON 到 ExtraConfig
+			var fullParams map[string]interface{}
+			if jsonErr := json.Unmarshal([]byte(builtin.ConfigValue), &fullParams); jsonErr == nil {
+				sc.ExtraConfig = fullParams
+			}
+
+			svc, createErr := s.registry.Create(external.DocumentServiceType, provider, sc)
+			if createErr != nil {
+				logger.Error("创建文档转换服务失败",
+					zap.String("provider", provider),
+					zap.Error(createErr))
+				continue
+			}
+
+			converter, ok := svc.(external.DocumentConverter)
+			if !ok {
+				logger.Error("Provider 未实现 DocumentConverter 接口",
+					zap.String("provider", provider))
+				continue
+			}
+
+			// 缓存转换器实例
+			if cacheErr := s.cache.Set(ctx, converterCacheKey, converter, sysConfigTTL); cacheErr != nil {
+				logger.Warn("缓存文档转换器失败", zap.Error(cacheErr))
+			}
+
+			logger.Info("使用文档转换配置", zap.String("provider", provider))
+			return converter, nil
+		}
+	}
+
+	// 2. 兜底：返回错误
+	return nil, fmt.Errorf("未找到文档转换配置，请在 sys_config 表中配置 document 服务")
 }

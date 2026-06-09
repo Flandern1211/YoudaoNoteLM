@@ -19,8 +19,14 @@ func NewController(adminService service.AdminService) *Controller {
 
 func (ctrl *Controller) ListUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	size, err := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if err != nil || size < 1 {
+		size = 10
+	}
 
 	users, total, err := ctrl.adminService.ListUsers(page, size, keyword)
 	if err != nil {
@@ -102,4 +108,15 @@ func (ctrl *Controller) GetConfigStatus(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"groups": status})
+}
+
+func (ctrl *Controller) DeleteConfig(c *gin.Context) {
+	group := c.Param("group")
+	key := c.Param("key")
+
+	if err := ctrl.adminService.DeleteConfig(group, key); err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.SuccessWithMessage(c, "删除成功", nil)
 }

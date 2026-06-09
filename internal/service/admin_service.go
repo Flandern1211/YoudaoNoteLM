@@ -11,10 +11,11 @@ import (
 type adminService struct {
 	userRepo   repository.UserRepository
 	configRepo repository.SysConfigRepository
+	configSvc  ConfigService // 用于清除配置缓存
 }
 
-func NewAdminService(userRepo repository.UserRepository, configRepo repository.SysConfigRepository) AdminService {
-	return &adminService{userRepo: userRepo, configRepo: configRepo}
+func NewAdminService(userRepo repository.UserRepository, configRepo repository.SysConfigRepository, configSvc ConfigService) AdminService {
+	return &adminService{userRepo: userRepo, configRepo: configRepo, configSvc: configSvc}
 }
 
 func (s *adminService) ListUsers(page, size int, keyword string) ([]*response.AdminUserResponse, int64, error) {
@@ -35,7 +36,9 @@ func (s *adminService) ListUsers(page, size int, keyword string) ([]*response.Ad
 	for _, u := range users {
 		list = append(list, &response.AdminUserResponse{
 			ID: u.ID, Username: u.Username, Email: u.Email,
-			Nickname: u.Nickname, Status: u.Status, CreatedAt: u.CreatedAt,
+			Nickname: u.Nickname, Avatar: u.Avatar, Role: u.Role,
+			Status: u.Status, Enabled: u.Status == 1,
+			CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
 		})
 	}
 
@@ -74,11 +77,19 @@ func (s *adminService) UpdateConfig(group, key string, value json.RawMessage, en
 
 	config.ConfigValue = string(value)
 	config.Enabled = enabled
-	return s.configRepo.Update(config)
+	if err := s.configRepo.Update(config); err != nil {
+		return err
+	}
+	// 清除系统配置缓存，使 /providers/active 等接口立即生效
+	s.configSvc.ClearSysConfigCache(group)
+	return nil
 }
 
 func (s *adminService) AddConfig(group, key string, value json.RawMessage, description string) error {
-	existing, _ := s.configRepo.FindByGroupAndKey(group, key)
+	existing, err := s.configRepo.FindByGroupAndKey(group, key)
+	if err != nil {
+		return err
+	}
 	if existing != nil {
 		return bizerrors.New(bizerrors.CodeResourceAlreadyExists, "配置已存在")
 	}
@@ -87,7 +98,27 @@ func (s *adminService) AddConfig(group, key string, value json.RawMessage, descr
 		ConfigGroup: group, ConfigKey: key,
 		ConfigValue: string(value), Enabled: true, Description: description,
 	}
-	return s.configRepo.Create(config)
+	if err := s.configRepo.Create(config); err != nil {
+		return err
+	}
+	// 清除系统配置缓存
+	s.configSvc.ClearSysConfigCache(group)
+	return nil
+}
+
+func (s *adminService) DeleteConfig(group, key string) error {
+	existing, err := s.configRepo.FindByGroupAndKey(group, key)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return bizerrors.ErrNotFound
+	}
+	if err := s.configRepo.Delete(existing.ID); err != nil {
+		return err
+	}
+	s.configSvc.ClearSysConfigCache(group)
+	return nil
 }
 
 func (s *adminService) GetConfigStatus() ([]response.ConfigStatusGroupResponse, error) {

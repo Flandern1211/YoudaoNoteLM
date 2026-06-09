@@ -34,8 +34,8 @@ const maxFileSize int64 = 30 << 20   // 30MB
 const maxAudioSize int64 = 300 << 20 // 300MB
 
 type importerService struct {
-	markitdown   external.MarkitdownClient
-	asr          external.ASRService
+	configSvc    ConfigService
+	converter    external.DocumentConverter // 兜底默认
 	storage      external.FileStorage
 	sourceRepo   repository.SourceRepository
 	importCache  *cache.ImportTaskCache
@@ -45,8 +45,8 @@ type importerService struct {
 
 // NewImporterService 创建导入服务
 func NewImporterService(
-	markitdown external.MarkitdownClient,
-	asr external.ASRService,
+	configSvc ConfigService,
+	converter external.DocumentConverter,
 	storage external.FileStorage,
 	sourceRepo repository.SourceRepository,
 	importCache *cache.ImportTaskCache,
@@ -54,14 +54,27 @@ func NewImporterService(
 	embedding EmbeddingService,
 ) ImporterService {
 	return &importerService{
-		markitdown:   markitdown,
-		asr:          asr,
+		configSvc:    configSvc,
+		converter:    converter,
 		storage:      storage,
 		sourceRepo:   sourceRepo,
 		importCache:  importCache,
 		previewCache: previewCache,
 		embedding:    embedding,
 	}
+}
+
+// getConverter 获取文档转换器（直接使用配置文件中的 markitdown 客户端）
+func (s *importerService) getConverter() external.DocumentConverter {
+	return s.converter
+}
+
+// getASR 获取 ASR 服务（从 ConfigService 动态获取）
+func (s *importerService) getASR() (external.ASRService, error) {
+	if s.configSvc != nil {
+		return s.configSvc.GetASRService(0) // userID=0 表示系统级
+	}
+	return nil, fmt.Errorf("未配置 ConfigService")
 }
 
 // ImportFile 文件上传导入
@@ -86,13 +99,25 @@ func (s *importerService) ImportFile(userID, notebookID uint, file *multipart.Fi
 	}
 
 	// 上传到 MinIO 存储
+	if s.storage == nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "文件存储服务未配置", nil)
+	}
+	// 重新打开文件用于上传
+	src2, err := file.Open()
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "重新打开文件失败", err)
+	}
+	defer src2.Close()
 	filePath, err := s.storage.Upload(file)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "文件上传失败", err)
 	}
 
-	// 通过 io.Reader 传给 MarkItDown 转换
-	markdown, err := s.markitdown.ConvertReader(file.Filename, bytes.NewReader(fileBytes))
+	// 获取文档转换器（优先从 ConfigService 读取数据库配置）
+	converter := s.getConverter()
+
+	// 通过 io.Reader 传给文档转换服务
+	markdown, err := converter.ConvertReader(file.Filename, bytes.NewReader(fileBytes))
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeFileParseFailed, "文件解析失败", err)
 	}
@@ -140,6 +165,9 @@ func (s *importerService) PreviewAudio(userID, notebookID uint, file *multipart.
 	}
 
 	// 上传原始文件到 MinIO
+	if s.storage == nil {
+		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "文件存储服务未配置", nil)
+	}
 	filePath, err := s.storage.Upload(file)
 	if err != nil {
 		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "音频上传失败", err)
@@ -164,7 +192,13 @@ func (s *importerService) PreviewAudio(userID, notebookID uint, file *multipart.
 		}
 	}
 
-	text, err := s.asr.Transcribe(asrFilePath)
+	// 获取 ASR 服务（从数据库配置动态加载）
+	asrSvc, err := s.getASR()
+	if err != nil {
+		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeASTranscriptionFailed, "未配置 ASR 服务", err)
+	}
+
+	text, err := asrSvc.Transcribe(asrFilePath)
 	if err != nil {
 		logger.Error("ASR转写失败", zap.String("file", filePath), zap.Error(err))
 		return "", "", "", bizerrors.NewWithErr(bizerrors.CodeASTranscriptionFailed, "音频转写失败", err)
@@ -297,18 +331,54 @@ func (s *importerService) ImportSearchResults(userID, notebookID uint, urls []st
 // processURLs 异步处理 URL 列表
 func (s *importerService) processURLs(taskID string, userID, notebookID uint, urls []string) {
 	ctx := context.Background()
-	for _, url := range urls {
-		markdown, err := s.markitdown.ConvertFromURL(url)
+	for i, url := range urls {
+		// 检查任务是否已被取消或删除
+		task, err := s.importCache.Get(ctx, taskID)
+		if err != nil || task == nil {
+			logger.Info("导入任务已被取消或删除，停止处理", zap.String("task_id", taskID))
+			return
+		}
+		if task.Status == "cancelled" {
+			logger.Info("导入任务已取消，停止处理", zap.String("task_id", taskID))
+			return
+		}
+
+		// 更新进度
+		task.Status = "running"
+		task.ProcessedCount = i
+		if err := s.importCache.Save(ctx, task); err != nil {
+			logger.Warn("更新任务进度失败", zap.String("task_id", taskID), zap.Error(err))
+		}
+
+		// 获取文档转换器
+		converter := s.getConverter()
+
+		// 预检：判断 URL 是否可抓取
+		ok, ct, checkErr := converter.CheckURL(url)
+		if !ok {
+			logger.Warn("URL预检不通过，跳过", zap.String("url", url), zap.String("content_type", ct), zap.Error(checkErr))
+			s.incrementTaskFail(ctx, taskID, fmt.Sprintf("%s: 不可抓取 (Content-Type: %s)", url, ct))
+			continue
+		}
+		logger.Info("URL预检通过，开始转换", zap.String("url", url), zap.String("content_type", ct))
+
+		markdown, err := converter.ConvertFromURL(url)
 		if err != nil {
 			logger.Warn("URL转换失败", zap.String("url", url), zap.Error(err))
 			s.incrementTaskFail(ctx, taskID, fmt.Sprintf("%s: %v", url, err))
 			continue
 		}
 
+		// 从 URL 提取名称，截断到 255 字符以内
+		name := url
+		if len(name) > 200 {
+			name = name[:200] + "..."
+		}
+
 		source := &entity.Source{
 			UserID:          userID,
 			NotebookID:      notebookID,
-			Name:            url,
+			Name:            name,
 			Type:            "url",
 			OriginalURL:     url,
 			MarkdownContent: markdown,
@@ -341,7 +411,7 @@ func (s *importerService) processURLs(taskID string, userID, notebookID uint, ur
 		logger.Error("获取导入任务失败", zap.String("task_id", taskID), zap.Error(err))
 		return
 	}
-	if task != nil {
+	if task != nil && task.Status != "cancelled" {
 		if task.FailCount > 0 && task.SuccessCount > 0 {
 			task.Status = "partial_failed"
 		} else if task.FailCount > 0 {
@@ -405,4 +475,29 @@ func (s *importerService) GetImportTask(taskID string) (interface{}, error) {
 		return nil, bizerrors.ErrNotFound
 	}
 	return task, nil
+}
+
+// DeleteImportTask 删除导入任务
+func (s *importerService) DeleteImportTask(taskID string) error {
+	ctx := context.Background()
+
+	// 先检查任务是否存在
+	task, err := s.importCache.Get(ctx, taskID)
+	if err != nil {
+		return bizerrors.ErrNotFound
+	}
+	if task == nil {
+		return bizerrors.ErrNotFound
+	}
+
+	// 如果任务正在运行中，标记为取消状态
+	if task.Status == "running" {
+		task.Status = "cancelled"
+		if err := s.importCache.Save(ctx, task); err != nil {
+			logger.Warn("更新任务状态为取消失败", zap.String("task_id", taskID), zap.Error(err))
+		}
+	}
+
+	// 删除任务缓存
+	return s.importCache.Delete(ctx, taskID)
 }

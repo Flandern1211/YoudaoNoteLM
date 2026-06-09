@@ -264,6 +264,7 @@ func (s *userService) GetUserResponse(user *entity.User) *dto.UserResponse {
 		Email:     user.Email,
 		Nickname:  user.Nickname,
 		Avatar:    user.Avatar,
+		Role:      user.Role,
 		Status:    user.Status,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,

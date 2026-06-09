@@ -32,8 +32,14 @@ func (ctrl *Controller) List(c *gin.Context) {
 	nbID := uint(nbID64)
 
 	keyword := c.Query("keyword")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	size, err := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if err != nil || size < 1 {
+		size = 10
+	}
 
 	sources, total, err := ctrl.sourceService.List(userID, nbID, keyword, page, size)
 	if err != nil {
