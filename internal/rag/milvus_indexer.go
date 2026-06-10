@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/schema"
 	milvusclient "github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -137,6 +138,7 @@ func (w *MilvusWriter) EnsureCollection(ctx context.Context, userID uint) error 
 }
 
 // Store 将文档和对应的向量写入用户专属 Collection
+// Deprecated: 使用 StoreWithSparse 代替，新 collection 包含 sparse_vector 字段
 func (w *MilvusWriter) Store(ctx context.Context, userID uint, docs []*schema.Document, vectors [][]float32) error {
 	if len(docs) == 0 || len(docs) != len(vectors) {
 		return fmt.Errorf("文档和向量数量不匹配: docs=%d, vectors=%d", len(docs), len(vectors))
@@ -315,7 +317,7 @@ func segmentText(text string) []string {
 			for j < len(runes) && ((runes[j] >= 'a' && runes[j] <= 'z') || (runes[j] >= 'A' && runes[j] <= 'Z') || (runes[j] >= '0' && runes[j] <= '9')) {
 				j++
 			}
-			words = append(words, string(runes[i:j]))
+			words = append(words, strings.ToLower(string(runes[i:j])))
 			i = j
 		} else {
 			i++
