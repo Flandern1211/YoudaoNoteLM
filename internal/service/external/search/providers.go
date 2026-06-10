@@ -14,7 +14,7 @@ func init() {
 	r.Register(ServiceType, "searxng", "SearXNG（自部署）",
 		[]string{"api_url"}, nil,
 		func(cfg *external.ServiceConfig) (interface{}, error) {
-			return external.NewSearXNGEngine(cfg.APIURL), nil
+			return NewSearXNGEngine(cfg.APIURL), nil
 		}, map[string]string{
 			"api_url": "API 地址",
 		})
@@ -64,7 +64,7 @@ func init() {
 			if name == "" {
 				name = "custom"
 			}
-			return external.NewCustomEngine(name, cfg.APIURL, cfg.APIKey), nil
+			return NewCustomEngine(name, cfg.APIURL, cfg.APIKey), nil
 		}, map[string]string{
 			"api_url": "API 地址",
 			"api_key": "API Key（可选）",

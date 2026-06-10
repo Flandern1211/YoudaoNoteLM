@@ -1,5 +1,5 @@
 // internal/service/external/document_converter.go
-package external
+package document
 
 import "io"
 
@@ -7,7 +7,7 @@ import "io"
 const DocumentServiceType = "document"
 
 // DocumentConverter 文档转换 Provider 接口
-// 将各种格式的文件/URL 转换为 Markdown
+// 将各种格式的文件/URL 转换为 Markd
 type DocumentConverter interface {
 	// Convert 本地文件转 Markdown
 	Convert(filePath string) (string, error)

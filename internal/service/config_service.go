@@ -1,6 +1,11 @@
 package service
 
 import (
+	"YoudaoNoteLm/internal/service/external/asr"
+	"YoudaoNoteLm/internal/service/external/document"
+	"YoudaoNoteLm/internal/service/external/embedding"
+	"YoudaoNoteLm/internal/service/external/search"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +15,7 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/internal/service/external/llm"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
 
@@ -31,12 +37,12 @@ type ChatModelConfig struct {
 
 // ConfigService 配置路由服务接口
 type ConfigService interface {
-	GetSearchEngine(userID uint) (external.SearchEngine, error)
-	GetASRService(userID uint) (external.ASRService, error)
-	GetEmbeddingService(userID uint) (external.EmbeddingService, error)
-	GetLLMClient(userID uint) (external.LLMClient, error)
+	GetSearchEngine(userID uint) (search.SearchEngine, error)
+	GetASRService(userID uint) (asr.ASRService, error)
+	GetEmbeddingService(userID uint) (embedding.EmbeddingService, error)
+	GetLLMClient(userID uint) (llm.LLMClient, error)
 	GetChatModelConfig(userID uint) (*ChatModelConfig, error)
-	GetDocumentConverter() (external.DocumentConverter, error) // 文档转换（系统级）
+	GetDocumentConverter() (document.DocumentConverter, error) // 文档转换（系统级）
 
 	// 获取配置（用于 API）
 	GetUserConfig(userID uint, configType string) (*entity.UserConfig, error)
@@ -53,7 +59,7 @@ type configService struct {
 	sysConfigRepo  repository.SysConfigRepository
 	userConfigRepo repository.UserConfigRepository
 	cache          CacheStore
-	storage        external.FileStorage // ASR 需要注入存储服务
+	storage        storage.FileStorage // ASR 需要注入存储服务
 	registry       *external.Registry  // Provider 注册表
 }
 
@@ -61,7 +67,7 @@ func NewConfigService(
 	sysConfigRepo repository.SysConfigRepository,
 	userConfigRepo repository.UserConfigRepository,
 	cache CacheStore,
-	storage external.FileStorage,
+	storage storage.FileStorage,
 ) ConfigService {
 	return &configService{
 		sysConfigRepo:  sysConfigRepo,
@@ -180,24 +186,24 @@ func (s *configService) getSysService(ctx context.Context, serviceType string) i
 	return nil
 }
 
-func (s *configService) GetSearchEngine(userID uint) (external.SearchEngine, error) {
+func (s *configService) GetSearchEngine(userID uint) (search.SearchEngine, error) {
 	svc, err := s.getService(userID, "search")
 	if err != nil {
 		return nil, err
 	}
-	engine, ok := svc.(external.SearchEngine)
+	engine, ok := svc.(search.SearchEngine)
 	if !ok {
 		return nil, fmt.Errorf("search provider 返回的类型不正确")
 	}
 	return engine, nil
 }
 
-func (s *configService) GetASRService(userID uint) (external.ASRService, error) {
+func (s *configService) GetASRService(userID uint) (asr.ASRService, error) {
 	svc, err := s.getService(userID, "asr")
 	if err != nil {
 		return nil, err
 	}
-	asrSvc, ok := svc.(external.ASRService)
+	asrSvc, ok := svc.(asr.ASRService)
 	if !ok {
 		return nil, fmt.Errorf("asr provider 返回的类型不正确")
 	}
@@ -206,12 +212,12 @@ func (s *configService) GetASRService(userID uint) (external.ASRService, error) 
 	return asrSvc, nil
 }
 
-func (s *configService) GetEmbeddingService(userID uint) (external.EmbeddingService, error) {
+func (s *configService) GetEmbeddingService(userID uint) (embedding.EmbeddingService, error) {
 	svc, err := s.getService(userID, "embedding")
 	if err != nil {
 		return nil, err
 	}
-	embedSvc, ok := svc.(external.EmbeddingService)
+	embedSvc, ok := svc.(embedding.EmbeddingService)
 	if !ok {
 		return nil, fmt.Errorf("embedding provider 返回的类型不正确")
 	}
@@ -335,11 +341,11 @@ func (s *configService) GetSysConfig(configType string) (*entity.SysConfig, erro
 }
 
 // injectStorage 注入文件存储到 ASR 服务（如果支持）
-func (s *configService) injectStorage(svc external.ASRService) {
+func (s *configService) injectStorage(svc asr.ASRService) {
 	if svc == nil || s.storage == nil {
 		return
 	}
-	if setter, ok := svc.(interface{ SetStorage(external.FileStorage) }); ok {
+	if setter, ok := svc.(interface{ SetStorage(storage.FileStorage) }); ok {
 		setter.SetStorage(s.storage)
 	}
 }
@@ -385,12 +391,12 @@ func parseSysConfigValue(value string) (sysConfigParams, error) {
 }
 
 // GetLLMClient 获取用户的 LLM 客户端
-func (s *configService) GetLLMClient(userID uint) (external.LLMClient, error) {
+func (s *configService) GetLLMClient(userID uint) (llm.LLMClient, error) {
 	svc, err := s.getService(userID, "llm")
 	if err != nil {
 		return nil, err
 	}
-	client, ok := svc.(external.LLMClient)
+	client, ok := svc.(llm.LLMClient)
 	if !ok {
 		return nil, fmt.Errorf("llm provider 返回的类型不正确")
 	}
@@ -474,7 +480,7 @@ func (s *configService) buildChatModelConfig(provider, apiURL, apiKey, model, ex
 
 // createLLMClientFromConfig 根据配置创建 LLM 客户端
 // 保留此方法供 GetChatModelConfig 内部使用
-func (s *configService) createLLMClientFromConfig(provider, apiURL, apiKey, model, extraConfig string) (external.LLMClient, error) {
+func (s *configService) createLLMClientFromConfig(provider, apiURL, apiKey, model, extraConfig string) (llm.LLMClient, error) {
 	// 如果显式传入的 model 为空，尝试从 ExtraConfig 中获取
 	if model == "" && extraConfig != "" {
 		var config map[string]interface{}
@@ -492,7 +498,7 @@ func (s *configService) createLLMClientFromConfig(provider, apiURL, apiKey, mode
 	switch provider {
 	case "openai", "deepseek", "zhipu", "qwen":
 		// 使用 OpenAI 兼容接口
-		return external.NewLLMClient(provider, apiURL, apiKey, model), nil
+		return llm.NewOpenAIClient(provider, apiURL, apiKey, model), nil
 	default:
 		return nil, fmt.Errorf("不支持的LLM服务商: %s", provider)
 	}
@@ -520,19 +526,19 @@ func (s *configService) getSysConfigs(ctx context.Context, cacheKey, group strin
 }
 
 // GetDocumentConverter 获取文档转换 Provider（系统级配置，不区分用户）
-func (s *configService) GetDocumentConverter() (external.DocumentConverter, error) {
+func (s *configService) GetDocumentConverter() (document.DocumentConverter, error) {
 	ctx := context.Background()
 
 	// 检查是否已缓存转换器
 	converterCacheKey := "document_converter_instance"
-	var cachedConverter external.DocumentConverter
+	var cachedConverter document.DocumentConverter
 	if err := s.cache.Get(ctx, converterCacheKey, &cachedConverter); err == nil && cachedConverter != nil {
 		return cachedConverter, nil
 	}
 
 	// 1. 查系统配置
-	sysCacheKey := sysConfigCacheKey(external.DocumentServiceType)
-	builtins, err := s.getSysConfigs(ctx, sysCacheKey, external.DocumentServiceType)
+	sysCacheKey := sysConfigCacheKey(document.DocumentServiceType)
+	builtins, err := s.getSysConfigs(ctx, sysCacheKey, document.DocumentServiceType)
 	if err == nil {
 		for _, builtin := range builtins {
 			if !builtin.Enabled {
@@ -560,7 +566,7 @@ func (s *configService) GetDocumentConverter() (external.DocumentConverter, erro
 				sc.ExtraConfig = fullParams
 			}
 
-			svc, createErr := s.registry.Create(external.DocumentServiceType, provider, sc)
+			svc, createErr := s.registry.Create(document.DocumentServiceType, provider, sc)
 			if createErr != nil {
 				logger.Error("创建文档转换服务失败",
 					zap.String("provider", provider),
@@ -568,7 +574,7 @@ func (s *configService) GetDocumentConverter() (external.DocumentConverter, erro
 				continue
 			}
 
-			converter, ok := svc.(external.DocumentConverter)
+			converter, ok := svc.(document.DocumentConverter)
 			if !ok {
 				logger.Error("Provider 未实现 DocumentConverter 接口",
 					zap.String("provider", provider))

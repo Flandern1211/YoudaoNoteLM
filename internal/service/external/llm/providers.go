@@ -19,7 +19,7 @@ func openaiCompatibleFactory(displayName string) external.FactoryFunc {
 		if model == "" {
 			return nil, fmt.Errorf("LLM 模型名称未配置")
 		}
-		return external.NewLLMClient(cfg.Provider, cfg.APIURL, cfg.APIKey, model), nil
+		return NewOpenAIClient(cfg.Provider, cfg.APIURL, cfg.APIKey, model), nil
 	}
 }
 

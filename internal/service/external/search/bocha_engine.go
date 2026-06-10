@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"YoudaoNoteLm/internal/service/external"
 )
 
 // BochaEngine 博查 AI 搜索引擎
@@ -56,7 +54,7 @@ func (e *BochaEngine) Name() string {
 	return "bocha"
 }
 
-func (e *BochaEngine) Search(query string, limit int) ([]external.SearchResultItem, error) {
+func (e *BochaEngine) Search(query string, limit int) ([]SearchResultItem, error) {
 	if e.apiKey == "" {
 		return nil, fmt.Errorf("Bocha API key 未配置")
 	}
@@ -103,9 +101,9 @@ func (e *BochaEngine) Search(query string, limit int) ([]external.SearchResultIt
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	items := make([]external.SearchResultItem, 0, len(result.Data.WebPages.Value))
+	items := make([]SearchResultItem, 0, len(result.Data.WebPages.Value))
 	for _, r := range result.Data.WebPages.Value {
-		items = append(items, external.SearchResultItem{
+		items = append(items, SearchResultItem{
 			Title:   r.Name,
 			URL:     r.URL,
 			Snippet: r.Snippet,

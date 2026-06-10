@@ -1,6 +1,7 @@
-package external
+package asr
 
 import (
+	"YoudaoNoteLm/internal/service/external/storage"
 	"encoding/json"
 	"testing"
 )
@@ -21,7 +22,7 @@ func TestNewASRServiceFromDB_AliyunNLS(t *testing.T) {
 	var _ ASRService = svc
 
 	// 验证实现了 SetStorage 接口
-	setter, ok := svc.(interface{ SetStorage(FileStorage) })
+	setter, ok := svc.(interface{ SetStorage(storage.FileStorage) })
 	if !ok {
 		t.Fatal("aliyun NLS service should implement SetStorage")
 	}

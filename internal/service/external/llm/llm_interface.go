@@ -1,11 +1,11 @@
 // internal/service/external/llm_interface.go
-package external
+package llm
 
 // Message 对话消息
 type Message struct {
-	Role       string     `json:"role"`                  // system/user/assistant/tool
+	Role       string     `json:"role"` // system/user/assistant/tool
 	Content    string     `json:"content,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`  // assistant 角色时使用
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // assistant 角色时使用
 	ToolCallID string     `json:"tool_call_id,omitempty"` // tool 角色时使用
 }
 

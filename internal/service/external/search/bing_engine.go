@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-
-	"YoudaoNoteLm/internal/service/external"
 )
 
 const bingSearchAPIURL = "https://api.bing.microsoft.com/v7.0/search"
@@ -42,7 +40,7 @@ func (e *BingEngine) Name() string {
 	return "bing"
 }
 
-func (e *BingEngine) Search(query string, limit int) ([]external.SearchResultItem, error) {
+func (e *BingEngine) Search(query string, limit int) ([]SearchResultItem, error) {
 	if e.apiKey == "" {
 		return nil, fmt.Errorf("Bing API key 未配置")
 	}
@@ -80,9 +78,9 @@ func (e *BingEngine) Search(query string, limit int) ([]external.SearchResultIte
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	items := make([]external.SearchResultItem, 0, len(result.WebPages.Value))
+	items := make([]SearchResultItem, 0, len(result.WebPages.Value))
 	for _, r := range result.WebPages.Value {
-		items = append(items, external.SearchResultItem{
+		items = append(items, SearchResultItem{
 			Title:   r.Name,
 			URL:     r.URL,
 			Snippet: r.Snippet,

@@ -1,5 +1,5 @@
 // internal/service/external/search_engine_interface.go
-package external
+package search
 
 // SearchResultItem 搜索结果项
 type SearchResultItem struct {

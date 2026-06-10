@@ -1,6 +1,9 @@
 package service
 
 import (
+	"YoudaoNoteLm/internal/service/external/asr"
+	"YoudaoNoteLm/internal/service/external/document"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"bytes"
 	"context"
 	"fmt"
@@ -12,7 +15,6 @@ import (
 
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/cache"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
@@ -35,8 +37,8 @@ const maxAudioSize int64 = 300 << 20 // 300MB
 
 type importerService struct {
 	configSvc    ConfigService
-	converter    external.DocumentConverter // 兜底默认
-	storage      external.FileStorage
+	converter    document.DocumentConverter // 兜底默认
+	storage      storage.FileStorage
 	sourceRepo   repository.SourceRepository
 	importCache  *cache.ImportTaskCache
 	previewCache *cache.AudioPreviewCache
@@ -46,8 +48,8 @@ type importerService struct {
 // NewImporterService 创建导入服务
 func NewImporterService(
 	configSvc ConfigService,
-	converter external.DocumentConverter,
-	storage external.FileStorage,
+	converter document.DocumentConverter,
+	storage storage.FileStorage,
 	sourceRepo repository.SourceRepository,
 	importCache *cache.ImportTaskCache,
 	previewCache *cache.AudioPreviewCache,
@@ -65,12 +67,12 @@ func NewImporterService(
 }
 
 // getConverter 获取文档转换器（直接使用配置文件中的 markitdown 客户端）
-func (s *importerService) getConverter() external.DocumentConverter {
+func (s *importerService) getConverter() document.DocumentConverter {
 	return s.converter
 }
 
 // getASR 获取 ASR 服务（从 ConfigService 动态获取）
-func (s *importerService) getASR() (external.ASRService, error) {
+func (s *importerService) getASR() (asr.ASRService, error) {
 	if s.configSvc != nil {
 		return s.configSvc.GetASRService(0) // userID=0 表示系统级
 	}

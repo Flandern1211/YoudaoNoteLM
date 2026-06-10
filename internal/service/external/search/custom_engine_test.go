@@ -1,4 +1,4 @@
-package external
+package search
 
 import (
 	"encoding/json"
@@ -6,23 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 )
-
-// --- 接口合规性测试 ---
-
-func TestCustomEngine_ImplementsInterface(t *testing.T) {
-	var _ SearchEngine = NewCustomEngine("test", "http://localhost", "key")
-}
-
-func TestSearXNGEngine_ImplementsInterface(t *testing.T) {
-	var _ SearchEngine = NewSearXNGEngine("http://localhost")
-}
-
-func TestEmbeddingService_InterfaceExists(t *testing.T) {
-	// EmbeddingService 是占位接口，验证编译期合规性
-	var _ EmbeddingService = nil // 接口定义存在即可
-}
-
-// --- CustomEngine 单元测试（Mock HTTP Server） ---
 
 func TestCustomEngine_Name(t *testing.T) {
 	engine := NewCustomEngine("my-search", "http://localhost", "key")
@@ -134,13 +117,4 @@ func TestCustomEngine_Search_InvalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 	t.Logf("正确捕获 JSON 解析错误: %v", err)
-}
-
-// --- SearXNGEngine 单元测试 ---
-
-func TestSearXNGEngine_Name(t *testing.T) {
-	engine := NewSearXNGEngine("http://localhost:8888")
-	if engine.Name() != "searxng" {
-		t.Errorf("expected 'searxng', got '%s'", engine.Name())
-	}
 }

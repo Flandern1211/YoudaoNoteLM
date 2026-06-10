@@ -8,7 +8,7 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
@@ -54,7 +54,7 @@ func main() {
 	sysConfigRepo := repository.NewSysConfigRepository(mysqlDB)
 	userConfigRepo := repository.NewUserConfigRepository(mysqlDB)
 	redisCache := cache.New(redisClient)
-	minioStorage, err := external.NewMinIOStorage(
+	minioStorage, err := storage.NewMinIOStorage(
 		cfg.External.MinIO.Endpoint,
 		cfg.External.MinIO.AccessKey,
 		cfg.External.MinIO.SecretKey,
@@ -104,7 +104,7 @@ func main() {
 		fmt.Printf("   ✅ ASR 服务类型: %T\n", asrSvc)
 		fmt.Printf("   ✅ ASR 服务非 nil: %v\n", asrSvc != nil)
 		// 检查是否注入了 storage
-		if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
+		if setter, ok := asrSvc.(interface{ SetStorage(storage.FileStorage) }); ok {
 			_ = setter
 			fmt.Println("   ✅ 支持 SetStorage 接口（storage 已注入）")
 		}

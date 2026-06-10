@@ -1,4 +1,4 @@
-package external
+package embedding
 
 // EmbeddingService 向量化服务接口
 // TODO: 后续模块接入时实现具体 provider

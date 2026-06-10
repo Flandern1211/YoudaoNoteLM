@@ -1,4 +1,4 @@
-package external
+package asr
 
 import (
 	"os"
@@ -9,7 +9,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// 初始化日志（测试环境用 console 输出）
 	_ = logger.Init(&config.LogConfig{
 		Level:    "error",
 		Filename: "",

@@ -1,5 +1,5 @@
-// internal/service/external/llm_client.go
-package external
+// internal/service/external/llm/openai_client.go
+package llm
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type llmClient struct {
+type openaiClient struct {
 	name   string
 	apiURL string
 	apiKey string
@@ -22,10 +22,10 @@ type llmClient struct {
 	client *http.Client
 }
 
-// NewLLMClient 创建 OpenAI 兼容 LLM 客户端
+// NewOpenAIClient 创建 OpenAI 兼容 LLM 客户端
 // 支持 OpenAI、通义千问、DeepSeek 等 OpenAI 兼容 API
-func NewLLMClient(name, apiURL, apiKey, model string) LLMClient {
-	return &llmClient{
+func NewOpenAIClient(name, apiURL, apiKey, model string) LLMClient {
+	return &openaiClient{
 		name:   name,
 		apiURL: apiURL,
 		apiKey: apiKey,
@@ -82,7 +82,7 @@ type openaiResponse struct {
 }
 
 // Chat 普通对话
-func (c *llmClient) Chat(messages []Message) (string, error) {
+func (c *openaiClient) Chat(messages []Message) (string, error) {
 	resp, err := c.doRequest(messages, nil)
 	if err != nil {
 		return "", err
@@ -91,7 +91,7 @@ func (c *llmClient) Chat(messages []Message) (string, error) {
 }
 
 // ChatWithTools 带工具调用的对话
-func (c *llmClient) ChatWithTools(messages []Message, tools []ToolDef) (*ToolCallResponse, error) {
+func (c *openaiClient) ChatWithTools(messages []Message, tools []ToolDef) (*ToolCallResponse, error) {
 	resp, err := c.doRequest(messages, tools)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (c *llmClient) ChatWithTools(messages []Message, tools []ToolDef) (*ToolCal
 }
 
 // doRequest 执行 OpenAI API 请求
-func (c *llmClient) doRequest(messages []Message, tools []ToolDef) (*openaiResponse, error) {
+func (c *openaiClient) doRequest(messages []Message, tools []ToolDef) (*openaiResponse, error) {
 	start := time.Now()
 
 	// 转换消息格式

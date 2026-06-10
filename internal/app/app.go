@@ -6,7 +6,8 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/internal/service/external/document"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
@@ -25,6 +26,7 @@ import (
 	_ "YoudaoNoteLm/internal/service/external/embedding"
 	_ "YoudaoNoteLm/internal/service/external/llm"
 	_ "YoudaoNoteLm/internal/service/external/search"
+	_ "YoudaoNoteLm/internal/service/external/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -160,8 +162,8 @@ func (a *App) initDependencies() {
 	notebookSvc := service.NewNotebookService(notebookRepo)
 
 	// 创建外部服务客户端
-	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
-	minioStorage, err := external.NewMinIOStorage(
+	markitdownClient := document.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
+	minioStorage, err := storage.NewMinIOStorage(
 		a.cfg.External.MinIO.Endpoint,
 		a.cfg.External.MinIO.AccessKey,
 		a.cfg.External.MinIO.SecretKey,

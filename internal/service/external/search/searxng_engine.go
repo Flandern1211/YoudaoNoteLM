@@ -1,5 +1,5 @@
-// internal/service/external/searxng_engine.go
-package external
+// internal/service/external/search/searxng_engine.go
+package search
 
 import (
 	"encoding/json"

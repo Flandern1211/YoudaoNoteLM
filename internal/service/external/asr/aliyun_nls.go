@@ -1,6 +1,7 @@
-package external
+package asr
 
 import (
+	"YoudaoNoteLm/internal/service/external/storage"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -16,10 +17,10 @@ import (
 )
 
 const (
-	nlsRegionID    = "cn-shanghai"
-	nlsProduct     = "nls-filetrans"
-	nlsDomain      = "filetrans.cn-shanghai.aliyuncs.com"
-	nlsAPIVersion  = "2018-08-17"
+	nlsRegionID     = "cn-shanghai"
+	nlsProduct      = "nls-filetrans"
+	nlsDomain       = "filetrans.cn-shanghai.aliyuncs.com"
+	nlsAPIVersion   = "2018-08-17"
 	nlsPollInterval = 3 * time.Second
 	nlsPollTimeout  = 10 * time.Minute
 )
@@ -29,7 +30,7 @@ type aliyunNLSASRService struct {
 	accessKeyID     string
 	accessKeySecret string
 	appKey          string
-	storage         FileStorage
+	storage         storage.FileStorage
 	client          *sdk.Client
 
 	tokenMu    sync.RWMutex
@@ -62,7 +63,7 @@ func NewAliyunNLSASRService(accessKeyID, accessKeySecret, appKey string) ASRServ
 }
 
 // SetStorage 设置文件存储（用于生成预签名 URL 给阿里云下载音频）
-func (s *aliyunNLSASRService) SetStorage(storage FileStorage) {
+func (s *aliyunNLSASRService) SetStorage(storage storage.FileStorage) {
 	s.storage = storage
 }
 
@@ -76,7 +77,9 @@ func (s *aliyunNLSASRService) Transcribe(filePath string) (string, error) {
 		return "", fmt.Errorf("ASR 服务未配置文件存储，无法获取文件 URL")
 	}
 
-	minioStore, ok := s.storage.(*minioStorage)
+	minioStore, ok := s.storage.(interface {
+		GetPresignedURL(string, time.Duration) (string, error)
+	})
 	if !ok {
 		return "", fmt.Errorf("存储类型不支持预签名 URL")
 	}

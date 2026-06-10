@@ -1,4 +1,4 @@
-package external
+package asr
 
 import (
 	"encoding/json"
@@ -13,6 +13,7 @@ import (
 // apiURL: API 地址（可选）
 // apiKey: API 密钥（可选）
 // extraConfig: JSON 格式的额外配置
+// Deprecated: 使用 Registry.Create 替代
 func NewASRServiceFromDB(provider, apiURL, apiKey, extraConfig string) ASRService {
 	switch provider {
 	case "aliyun_nls":

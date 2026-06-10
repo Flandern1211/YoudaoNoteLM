@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"YoudaoNoteLm/internal/service/external"
 )
 
 const serperAPIURL = "https://google.serper.dev/search"
@@ -46,7 +44,7 @@ func (e *SerperEngine) Name() string {
 	return "serper"
 }
 
-func (e *SerperEngine) Search(query string, limit int) ([]external.SearchResultItem, error) {
+func (e *SerperEngine) Search(query string, limit int) ([]SearchResultItem, error) {
 	if e.apiKey == "" {
 		return nil, fmt.Errorf("Serper API key 未配置")
 	}
@@ -88,9 +86,9 @@ func (e *SerperEngine) Search(query string, limit int) ([]external.SearchResultI
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	items := make([]external.SearchResultItem, 0, len(result.Organic))
+	items := make([]SearchResultItem, 0, len(result.Organic))
 	for _, r := range result.Organic {
-		items = append(items, external.SearchResultItem{
+		items = append(items, SearchResultItem{
 			Title:   r.Title,
 			URL:     r.Link,
 			Snippet: r.Snippet,

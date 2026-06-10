@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-
-	"YoudaoNoteLm/internal/service/external"
 )
 
 const defaultWhisperURL = "https://api.openai.com/v1"
@@ -24,7 +22,7 @@ type WhisperClient struct {
 }
 
 // NewWhisperClient 创建 Whisper 客户端
-func NewWhisperClient(apiURL, apiKey string) *WhisperClient {
+func NewWhisperClient(apiURL, apiKey string) ASRService {
 	if apiURL == "" {
 		apiURL = defaultWhisperURL
 	}
@@ -110,4 +108,4 @@ func (c *WhisperClient) Transcribe(filePath string) (string, error) {
 }
 
 // 确保 WhisperClient 实现了 ASRService 接口
-var _ external.ASRService = (*WhisperClient)(nil)
+var _ ASRService = (*WhisperClient)(nil)

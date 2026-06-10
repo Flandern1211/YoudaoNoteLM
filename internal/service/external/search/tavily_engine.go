@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"YoudaoNoteLm/internal/service/external"
 )
 
 const tavilyAPIURL = "https://api.tavily.com/search"
@@ -29,9 +27,9 @@ func NewTavilyEngine(apiKey string) *TavilyEngine {
 
 // tavilyRequest Tavily API 请求
 type tavilyRequest struct {
-	APIKey       string   `json:"api_key"`
-	Query        string   `json:"query"`
-	MaxResults   int      `json:"max_results"`
+	APIKey        string `json:"api_key"`
+	Query         string `json:"query"`
+	MaxResults    int    `json:"max_results"`
 	IncludeAnswer bool   `json:"include_answer,omitempty"`
 }
 
@@ -49,7 +47,7 @@ func (e *TavilyEngine) Name() string {
 	return "tavily"
 }
 
-func (e *TavilyEngine) Search(query string, limit int) ([]external.SearchResultItem, error) {
+func (e *TavilyEngine) Search(query string, limit int) ([]SearchResultItem, error) {
 	if e.apiKey == "" {
 		return nil, fmt.Errorf("Tavily API key 未配置")
 	}
@@ -91,9 +89,9 @@ func (e *TavilyEngine) Search(query string, limit int) ([]external.SearchResultI
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	items := make([]external.SearchResultItem, 0, len(result.Results))
+	items := make([]SearchResultItem, 0, len(result.Results))
 	for _, r := range result.Results {
-		items = append(items, external.SearchResultItem{
+		items = append(items, SearchResultItem{
 			Title:   r.Title,
 			URL:     r.URL,
 			Snippet: r.Content,

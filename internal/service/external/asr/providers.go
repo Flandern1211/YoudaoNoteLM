@@ -27,7 +27,7 @@ func init() {
 				return nil, fmt.Errorf("阿里云 ASR 配置不完整: access_key_id, access_key_secret, app_key 均为必填")
 			}
 
-			return external.NewAliyunNLSASRService(accessKeyID, accessKeySecret, appKey), nil
+			return NewAliyunNLSASRService(accessKeyID, accessKeySecret, appKey), nil
 		}, map[string]string{
 			"access_key_id":     "Access Key ID",
 			"access_key_secret": "Access Key Secret",

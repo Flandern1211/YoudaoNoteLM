@@ -1,21 +1,21 @@
 package service
 
 import (
+	"YoudaoNoteLm/internal/service/external/storage"
 	"time"
 
 	"YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service/external"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 )
 
 type sourceService struct {
 	sourceRepo repository.SourceRepository
-	storage    external.FileStorage
+	storage    storage.FileStorage
 }
 
-func NewSourceService(sourceRepo repository.SourceRepository, storage external.FileStorage) SourceService {
+func NewSourceService(sourceRepo repository.SourceRepository, storage storage.FileStorage) SourceService {
 	return &sourceService{sourceRepo: sourceRepo, storage: storage}
 }
 

@@ -1,4 +1,4 @@
-package external
+package search
 
 import (
 	"bytes"

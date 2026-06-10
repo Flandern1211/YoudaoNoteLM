@@ -1,4 +1,4 @@
-package external
+package document
 
 import (
 	"bytes"
@@ -18,8 +18,8 @@ import (
 )
 
 type markitdownClient struct {
-	baseURL       string
-	httpClient    *http.Client
+	baseURL        string
+	httpClient     *http.Client
 	prefetchClient *http.Client
 }
 
