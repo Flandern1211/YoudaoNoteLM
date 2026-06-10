@@ -17,6 +17,12 @@ type Config struct {
 type ExternalConfig struct {
 	MarkItDown MarkItDownConfig `mapstructure:"markitdown"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
+	Youdao     YoudaoConfig     `mapstructure:"youdao"`
+}
+
+// YoudaoConfig 有道云笔记 CLI 配置
+type YoudaoConfig struct {
+	CLIPath string `mapstructure:"cli_path"` // CLI 路径，默认 "youdaonote"（在 PATH 中）
 }
 
 // MarkItDownConfig 文档转换服务配置

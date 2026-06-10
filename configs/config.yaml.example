@@ -65,3 +65,5 @@ external:
     access_key: "minioadmin"
     secret_key: "12345678"
     bucket: "youdaonotelm"
+  youdao:
+    cli_path: "youdaonote"  # CLI 路径，默认在 PATH 中查找，也可指定绝对路径
