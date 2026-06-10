@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"YoudaoNoteLm/internal/model/dto/response"
@@ -50,25 +51,42 @@ func (s *searchAgentService) SearchStream(userID, notebookID uint, query string)
 	return s.searchAgent.ExecuteStream(ctx, userID, notebookID, query)
 }
 
-// ImportFromURL URL 直接导入（返回任务 ID）
-func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) (string, error) {
-	taskID, err := s.importer.ImportSearchResults(userID, notebookID, []string{url})
+// ImportFromURL URL 直接导入（返回任务 ID 和 Source ID）
+func (s *searchAgentService) ImportFromURL(userID, notebookID uint, url string) (string, uint, error) {
+	taskID, sourceIDs, err := s.importer.ImportSearchResults(userID, notebookID, []string{url})
 	if err != nil {
-		return "", err
+		return "", 0, err
+	}
+	if len(sourceIDs) == 0 {
+		return "", 0, fmt.Errorf("导入失败：未创建Source记录")
 	}
 
 	logger.Info("URL导入任务已创建",
 		zap.Uint("user_id", userID),
 		zap.String("url", url),
 		zap.String("task_id", taskID),
+		zap.Uint("source_id", sourceIDs[0]),
 	)
 
-	return taskID, nil
+	return taskID, sourceIDs[0], nil
 }
 
 // ImportSearchResults 批量导入
-func (s *searchAgentService) ImportSearchResults(userID, notebookID uint, urls []string) (string, error) {
+func (s *searchAgentService) ImportSearchResults(userID, notebookID uint, urls []string) (string, []uint, error) {
 	return s.importer.ImportSearchResults(userID, notebookID, urls)
+}
+
+// SearchAndImport 搜索并自动导入（主Agent调用模式）
+func (s *searchAgentService) SearchAndImport(userID, notebookID uint, query string) (*response.SearchResponse, error) {
+	// 执行 Agent（自动导入模式）
+	ctx := context.Background()
+	result, err := s.searchAgent.ExecuteWithImport(ctx, userID, notebookID, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解析 Agent 结果为 SearchResponse
+	return parseAgentResult(result.Content, result.SearchRounds)
 }
 
 // parseAgentResult 解析 Agent 返回的内容为 SearchResponse

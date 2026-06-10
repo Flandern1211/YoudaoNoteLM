@@ -6,9 +6,6 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external/document"
-	"YoudaoNoteLm/internal/service/external/storage"
-	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
@@ -24,7 +21,6 @@ import (
 
 	// 触发 provider 注册（各子包 init() 会自动注册到全局 Registry）
 	_ "YoudaoNoteLm/internal/service/external/asr"
-	_ "YoudaoNoteLm/internal/service/external/document"
 	_ "YoudaoNoteLm/internal/service/external/embedding"
 	_ "YoudaoNoteLm/internal/service/external/llm"
 	_ "YoudaoNoteLm/internal/service/external/search"
@@ -162,9 +158,8 @@ func (a *App) initDependencies() {
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	notebookSvc := service.NewNotebookService(notebookRepo)
-	sourceSvc := service.NewSourceService(sourceRepo)
 
-	// 创建外部服务客户端
+	// 创建外部服务客户端（MarkItDown 直接从 config.yaml 读取，不通过 Provider Registry）
 	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
 	minioStorage := external.NewMinIOStorage(
 		a.cfg.External.MinIO.Endpoint,
@@ -172,38 +167,6 @@ func (a *App) initDependencies() {
 		a.cfg.External.MinIO.SecretKey,
 		a.cfg.External.MinIO.Bucket,
 	)
-
-	// ASR 服务（根据 provider 配置自动选择实现）
-	asrSvc := external.NewASRService(a.cfg.External.ASR)
-	// 注入 MinIO 存储，ASR 需要生成预签名 URL
-	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
-		setter.SetStorage(minioStorage)
-	}
-
-	// 创建缓存
-	redisCache := cache.New(a.redis)
-	importTaskCache := cache.NewImportTaskCache(redisCache)
-	audioPreviewCache := cache.NewAudioPreviewCache(redisCache)
-
-	// 创建导入服务（EmbeddingService 暂时为 nil，后续模块接入）
-	importerSvc := service.NewImporterService(
-		markitdownClient, asrSvc, minioStorage,
-		sourceRepo, importTaskCache, audioPreviewCache, nil,
-	)
-	notebookSvc := service.NewNotebookService(notebookRepo)
-
-	// 创建外部服务客户端
-	markitdownClient := document.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
-	minioStorage, err := storage.NewMinIOStorage(
-		a.cfg.External.MinIO.Endpoint,
-		a.cfg.External.MinIO.AccessKey,
-		a.cfg.External.MinIO.SecretKey,
-		a.cfg.External.MinIO.Bucket,
-	)
-	if err != nil {
-		logger.Error("MinIO 存储初始化失败", zap.Error(err))
-		// MinIO 失败不影响核心功能，继续启动
-	}
 
 	// 创建 Service（依赖外部客户端）
 	sourceSvc := service.NewSourceService(sourceRepo, minioStorage)
@@ -213,14 +176,14 @@ func (a *App) initDependencies() {
 	importTaskCache := cache.NewImportTaskCache(redisCache)
 	audioPreviewCache := cache.NewAudioPreviewCache(redisCache)
 
-	// 创建导入服务（EmbeddingService 暂时为 nil，后续模块接入）
+	// 创建 ConfigService（配置路由降级，管理 ASR/Search/LLM/Embedding 等动态服务）
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, minioStorage)
+
+	// 创建导入服务（ASR 通过 ConfigService 动态获取，EmbeddingService 暂时为 nil）
 	importerSvc := service.NewImporterService(
-		nil, markitdownClient, minioStorage,
+		configSvc, markitdownClient, minioStorage,
 		sourceRepo, importTaskCache, audioPreviewCache, nil,
 	)
-
-	// 创建 ConfigService（配置路由降级）
-	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, minioStorage)
 
 	// 创建后台管理服务
 	adminSvc := service.NewAdminService(userRepo, sysConfigRepo, configSvc)
@@ -234,7 +197,6 @@ func (a *App) initDependencies() {
 
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, adminSvc, userCfgSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc, configSvc)
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, captchaSvc, tokenBlacklistSvc)
 }
 
 // initRouter 初始化路由

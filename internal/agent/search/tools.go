@@ -80,7 +80,7 @@ func NewImportURLsTool(importer service.ImporterService) (tool.InvokableTool, er
 			userID := GetUserID(ctx)
 			notebookID := GetNotebookID(ctx)
 
-			taskID, err := importer.ImportSearchResults(userID, notebookID, input.URLs)
+			taskID, sourceIDs, err := importer.ImportSearchResults(userID, notebookID, input.URLs)
 			if err != nil {
 				return nil, fmt.Errorf("导入失败: %w", err)
 			}
@@ -89,6 +89,7 @@ func NewImportURLsTool(importer service.ImporterService) (tool.InvokableTool, er
 				zap.Uint("user_id", userID),
 				zap.Int("url_count", len(input.URLs)),
 				zap.String("task_id", taskID),
+				zap.Any("source_ids", sourceIDs),
 			)
 
 			return &ImportURLsOutput{

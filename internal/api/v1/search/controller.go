@@ -103,13 +103,13 @@ func (ctrl *Controller) ImportFromURL(c *gin.Context) {
 		return
 	}
 
-	taskID, err := ctrl.searchService.ImportFromURL(userID, uint(nbID), req.URL)
+	taskID, sourceID, err := ctrl.searchService.ImportFromURL(userID, uint(nbID), req.URL)
 	if err != nil {
 		response.BizError(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{"task_id": taskID})
+	response.Success(c, gin.H{"task_id": taskID, "source_id": sourceID})
 }
 
 // ImportSearchResults 批量导入搜索结果
@@ -127,11 +127,11 @@ func (ctrl *Controller) ImportSearchResults(c *gin.Context) {
 		return
 	}
 
-	taskID, err := ctrl.searchService.ImportSearchResults(userID, uint(nbID), req.URLs)
+	taskID, sourceIDs, err := ctrl.searchService.ImportSearchResults(userID, uint(nbID), req.URLs)
 	if err != nil {
 		response.BizError(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{"task_id": taskID})
+	response.Success(c, gin.H{"task_id": taskID, "source_ids": sourceIDs})
 }

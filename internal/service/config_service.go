@@ -2,7 +2,6 @@ package service
 
 import (
 	"YoudaoNoteLm/internal/service/external/asr"
-	"YoudaoNoteLm/internal/service/external/document"
 	"YoudaoNoteLm/internal/service/external/embedding"
 	"YoudaoNoteLm/internal/service/external/search"
 	"YoudaoNoteLm/internal/service/external/storage"
@@ -42,7 +41,6 @@ type ConfigService interface {
 	GetEmbeddingService(userID uint) (embedding.EmbeddingService, error)
 	GetLLMClient(userID uint) (llm.LLMClient, error)
 	GetChatModelConfig(userID uint) (*ChatModelConfig, error)
-	GetDocumentConverter() (document.DocumentConverter, error) // 文档转换（系统级）
 
 	// 获取配置（用于 API）
 	GetUserConfig(userID uint, configType string) (*entity.UserConfig, error)
@@ -523,74 +521,4 @@ func (s *configService) getSysConfigs(ctx context.Context, cacheKey, group strin
 		logger.Warn("缓存系统配置列表失败", zap.String("key", cacheKey), zap.Error(cacheErr))
 	}
 	return builtins, nil
-}
-
-// GetDocumentConverter 获取文档转换 Provider（系统级配置，不区分用户）
-func (s *configService) GetDocumentConverter() (document.DocumentConverter, error) {
-	ctx := context.Background()
-
-	// 检查是否已缓存转换器
-	converterCacheKey := "document_converter_instance"
-	var cachedConverter document.DocumentConverter
-	if err := s.cache.Get(ctx, converterCacheKey, &cachedConverter); err == nil && cachedConverter != nil {
-		return cachedConverter, nil
-	}
-
-	// 1. 查系统配置
-	sysCacheKey := sysConfigCacheKey(document.DocumentServiceType)
-	builtins, err := s.getSysConfigs(ctx, sysCacheKey, document.DocumentServiceType)
-	if err == nil {
-		for _, builtin := range builtins {
-			if !builtin.Enabled {
-				continue
-			}
-
-			provider := builtin.ConfigKey
-			params, parseErr := parseSysConfigValue(builtin.ConfigValue)
-			if parseErr == nil && params.Provider != "" {
-				provider = params.Provider
-			}
-			// 兼容 name 字段作为 provider 名称
-			if parseErr == nil && params.Name != "" && params.Provider == "" {
-				provider = params.Name
-			}
-
-			apiURL := params.GetAPIURL()
-
-			sc := external.NewServiceConfigFromEntity(
-				provider, apiURL, params.APIKey, "", "")
-
-			// 解析完整 JSON 到 ExtraConfig
-			var fullParams map[string]interface{}
-			if jsonErr := json.Unmarshal([]byte(builtin.ConfigValue), &fullParams); jsonErr == nil {
-				sc.ExtraConfig = fullParams
-			}
-
-			svc, createErr := s.registry.Create(document.DocumentServiceType, provider, sc)
-			if createErr != nil {
-				logger.Error("创建文档转换服务失败",
-					zap.String("provider", provider),
-					zap.Error(createErr))
-				continue
-			}
-
-			converter, ok := svc.(document.DocumentConverter)
-			if !ok {
-				logger.Error("Provider 未实现 DocumentConverter 接口",
-					zap.String("provider", provider))
-				continue
-			}
-
-			// 缓存转换器实例
-			if cacheErr := s.cache.Set(ctx, converterCacheKey, converter, sysConfigTTL); cacheErr != nil {
-				logger.Warn("缓存文档转换器失败", zap.Error(cacheErr))
-			}
-
-			logger.Info("使用文档转换配置", zap.String("provider", provider))
-			return converter, nil
-		}
-	}
-
-	// 2. 兜底：返回错误
-	return nil, fmt.Errorf("未找到文档转换配置，请在 sys_config 表中配置 document 服务")
 }

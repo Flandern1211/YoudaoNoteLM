@@ -2,6 +2,7 @@ package external
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,12 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultTimeout     = 30 * time.Second // 默认超时
+	fileConvertTimeout = 30 * time.Second // 文件转换超时
+	urlConvertTimeout  = 20 * time.Second // URL 转换超时
+)
+
 type markitdownClient struct {
 	baseURL    string
 	httpClient *http.Client
@@ -25,7 +32,7 @@ type markitdownClient struct {
 func NewMarkitdownClient(baseURL string) MarkitdownClient {
 	return &markitdownClient{
 		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
@@ -37,11 +44,22 @@ func (c *markitdownClient) Convert(filePath string) (string, error) {
 	}
 	defer file.Close()
 
-	return c.ConvertReader(filepath.Base(filePath), file)
+	ctx, cancel := context.WithTimeout(context.Background(), fileConvertTimeout)
+	defer cancel()
+
+	return c.ConvertReaderWithContext(ctx, filepath.Base(filePath), file)
 }
 
 // ConvertReader 通过 io.Reader 上传文件转 Markdown
 func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), fileConvertTimeout)
+	defer cancel()
+
+	return c.ConvertReaderWithContext(ctx, filename, reader)
+}
+
+// ConvertReaderWithContext 通过 io.Reader 上传文件转 Markdown（带 context）
+func (c *markitdownClient) ConvertReaderWithContext(ctx context.Context, filename string, reader io.Reader) (string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("file", filename)
@@ -55,11 +73,24 @@ func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (str
 		return "", fmt.Errorf("关闭multipart writer失败: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(c.baseURL+"/convert", writer.FormDataContentType(), body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/convert", body)
 	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("请求MarkItDown超时（%v）", fileConvertTimeout)
+		}
 		return "", fmt.Errorf("请求MarkItDown失败: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusRequestTimeout {
+		return "", fmt.Errorf("MarkItDown 服务端转换超时")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -74,18 +105,31 @@ func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (str
 	// MarkItDown Python 服务返回 {"filename": "...", "markdown": "..."}
 	var result struct {
 		Markdown string `json:"markdown"`
+		Cached   bool   `json:"cached"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		// 降级：返回原始响应
 		return string(respBody), nil
 	}
 
-	logger.Info("MarkItDown转换成功", zap.String("file", filename))
+	logger.Info("MarkItDown转换成功", zap.String("file", filename), zap.Bool("cached", result.Cached))
 	return result.Markdown, nil
 }
 
 // ConvertFromURL 网页 URL 转 Markdown
 func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), urlConvertTimeout)
+	defer cancel()
+
+	return c.ConvertFromURLWithContext(ctx, url)
+}
+
+// ConvertFromURLWithContext 网页 URL 转 Markdown（带 context）
+func (c *markitdownClient) ConvertFromURLWithContext(ctx context.Context, url string) (string, error) {
+	// 在传入的 ctx 基础上叠加超时控制，确保单个请求不会无限等待
+	ctx, cancel := context.WithTimeout(ctx, urlConvertTimeout)
+	defer cancel()
+
 	// MarkItDown 服务的 /convert_url 使用 Form 表单
 	formBody := &bytes.Buffer{}
 	writer := multipart.NewWriter(formBody)
@@ -94,11 +138,24 @@ func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
 		return "", fmt.Errorf("关闭writer失败: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(c.baseURL+"/convert_url", writer.FormDataContentType(), formBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/convert_url", formBody)
 	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("请求MarkItDown URL转换超时（%v）", urlConvertTimeout)
+		}
 		return "", fmt.Errorf("请求MarkItDown URL转换失败: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusRequestTimeout {
+		return "", fmt.Errorf("MarkItDown 服务端转换超时")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -114,6 +171,7 @@ func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
 	var result struct {
 		Markdown string `json:"markdown"`
 		Message  string `json:"message"`
+		Cached   bool   `json:"cached"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return string(respBody), nil
@@ -124,6 +182,6 @@ func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
 		return "", fmt.Errorf("%s", result.Message)
 	}
 
-	logger.Info("MarkItDown URL转换成功", zap.String("url", url))
+	logger.Info("MarkItDown URL转换成功", zap.String("url", url), zap.Bool("cached", result.Cached))
 	return result.Markdown, nil
 }
