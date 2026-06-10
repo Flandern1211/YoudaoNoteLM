@@ -195,8 +195,17 @@ func (a *App) initDependencies() {
 	searchAgent := searchAgent.NewSearchAgent(configSvc, importerSvc)
 	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchAgent)
 
+	// 创建有道云笔记 CLI 客户端
+	youdaoCLI := external.NewYoudaoCLI(a.cfg.External.Youdao.CLIPath)
+
+	// 创建有道云笔记绑定 Repository
+	youdaoBindingRepo := repository.NewYoudaoBindingRepository(a.mysqlDB)
+
+	// 创建有道云笔记服务（EmbeddingService 暂时为 nil）
+	youdaoSvc := service.NewYoudaoService(youdaoCLI, youdaoBindingRepo, sourceRepo, nil)
+
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, adminSvc, userCfgSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc, configSvc)
+	a.router = api.NewRouter(userSvc, authSvc, notebookSvc, sourceSvc, importerSvc, adminSvc, userCfgSvc, searchAgentSvc, captchaSvc, tokenBlacklistSvc, configSvc, youdaoSvc)
 }
 
 // initRouter 初始化路由
