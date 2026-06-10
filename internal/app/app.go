@@ -2,7 +2,7 @@ package app
 
 import (
 	"YoudaoNoteLm/internal/api"
-	"YoudaoNoteLm/internal/ingestion"
+	"YoudaoNoteLm/internal/rag"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 
@@ -195,11 +195,11 @@ func (a *App) initDependencies() {
 
 // initIngestionService 初始化入库服务
 // 从数据库读取用户的 Embedding 配置，创建 EmbedderProvider 和 MilvusWriter
-func (a *App) initIngestionService(sourceRepo repository.SourceRepository) ingestion.IngestionService {
+func (a *App) initIngestionService(sourceRepo repository.SourceRepository) rag.IngestionService {
 	ctx := context.Background()
 
 	// 创建 Milvus Writer
-	milvusWriter, err := ingestion.NewMilvusWriter(ctx, ingestion.MilvusIndexerConfig{
+	milvusWriter, err := rag.NewMilvusWriter(ctx, rag.MilvusIndexerConfig{
 		Address: a.cfg.External.Milvus.Address,
 	})
 	if err != nil {
@@ -217,11 +217,11 @@ func (a *App) initIngestionService(sourceRepo repository.SourceRepository) inges
 		if cfg == nil {
 			return nil, fmt.Errorf("用户 %d 未配置 Embedding", userID)
 		}
-		return ingestion.NewEmbedder(ctx, cfg)
+		return rag.NewEmbedder(ctx, cfg)
 	}
 
 	parentRepo := repository.NewParentBlockRepository(a.mysqlDB)
-	ingestionSvc := ingestion.NewIngestionService(sourceRepo, parentRepo, embedderProvider, milvusWriter)
+	ingestionSvc := rag.NewIngestionService(sourceRepo, parentRepo, embedderProvider, milvusWriter)
 	logger.Info("IngestionService 初始化成功")
 	return ingestionSvc
 }

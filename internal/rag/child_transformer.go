@@ -1,4 +1,4 @@
-package ingestion
+package rag
 
 import (
 	"context"
