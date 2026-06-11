@@ -12,7 +12,6 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/logger"
 
 	"go.uber.org/zap"
@@ -25,7 +24,7 @@ type MinioStorage struct {
 }
 
 // NewMinIOStorage 创建 MinIO 存储
-func NewMinIOStorage(endpoint, accessKey, secretKey, bucket string) (external.FileStorage, error) {
+func NewMinIOStorage(endpoint, accessKey, secretKey, bucket string) (FileStorage, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: false,

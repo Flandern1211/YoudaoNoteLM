@@ -14,8 +14,9 @@ import (
 
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/internal/service/external/asr"
+	externalMarkitdown "YoudaoNoteLm/internal/service/external/markitdown"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"YoudaoNoteLm/pkg/cache"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
@@ -38,8 +39,8 @@ const maxAudioSize int64 = 300 << 20 // 300MB
 
 type importerService struct {
 	configSvc    ConfigService
-	markitdown   external.MarkitdownClient
-	storage      external.FileStorage
+	markitdown   externalMarkitdown.Client
+	storage      storage.FileStorage
 	sourceRepo   repository.SourceRepository
 	importCache  *cache.ImportTaskCache
 	previewCache *cache.AudioPreviewCache
@@ -50,8 +51,8 @@ type importerService struct {
 // NewImporterService 创建导入服务
 func NewImporterService(
 	configSvc ConfigService,
-	markitdown external.MarkitdownClient,
-	storage external.FileStorage,
+	markitdown externalMarkitdown.Client,
+	storage storage.FileStorage,
 	sourceRepo repository.SourceRepository,
 	importCache *cache.ImportTaskCache,
 	previewCache *cache.AudioPreviewCache,
@@ -506,7 +507,7 @@ func (s *importerService) processSingleSource(taskCtx context.Context, sourceID 
 
 		// 处理结构化错误，返回用户友好的错误信息
 		var userMsg string
-		var convertErr *external.ConvertError
+		var convertErr *externalMarkitdown.ConvertError
 		if errors.As(err, &convertErr) {
 			// 记录详细的技术错误信息到日志
 			logger.Warn("URL转换失败",

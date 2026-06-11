@@ -1,4 +1,4 @@
-package external
+package markitdown
 
 import (
 	"bytes"
@@ -45,21 +45,21 @@ const (
 	urlConvertTimeout  = 45 * time.Second // URL 转换超时（网页抓取需要更多时间）
 )
 
-type markitdownClient struct {
+type client struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// NewMarkitdownClient 创建 MarkItDown HTTP 客户端
-func NewMarkitdownClient(baseURL string) MarkitdownClient {
-	return &markitdownClient{
+// NewClient 创建 MarkItDown HTTP 客户端
+func NewClient(baseURL string) Client {
+	return &client{
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
 // Convert 本地文件转 Markdown（上传文件到 MarkItDown 服务）
-func (c *markitdownClient) Convert(filePath string) (string, error) {
+func (c *client) Convert(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("打开文件失败: %w", err)
@@ -78,7 +78,7 @@ func (c *markitdownClient) Convert(filePath string) (string, error) {
 }
 
 // ConvertReader 通过 io.Reader 上传文件转 Markdown
-func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (string, error) {
+func (c *client) ConvertReader(filename string, reader io.Reader) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), fileConvertTimeout)
 	defer cancel()
 
@@ -86,7 +86,7 @@ func (c *markitdownClient) ConvertReader(filename string, reader io.Reader) (str
 }
 
 // ConvertReaderWithContext 通过 io.Reader 上传文件转 Markdown（带 context）
-func (c *markitdownClient) ConvertReaderWithContext(ctx context.Context, filename string, reader io.Reader) (string, error) {
+func (c *client) ConvertReaderWithContext(ctx context.Context, filename string, reader io.Reader) (string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("file", filename)
@@ -152,7 +152,7 @@ func (c *markitdownClient) ConvertReaderWithContext(ctx context.Context, filenam
 }
 
 // ConvertFromURL 网页 URL 转 Markdown
-func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
+func (c *client) ConvertFromURL(url string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), urlConvertTimeout)
 	defer cancel()
 
@@ -160,7 +160,7 @@ func (c *markitdownClient) ConvertFromURL(url string) (string, error) {
 }
 
 // ConvertFromURLWithContext 网页 URL 转 Markdown（带 context）
-func (c *markitdownClient) ConvertFromURLWithContext(ctx context.Context, url string) (string, error) {
+func (c *client) ConvertFromURLWithContext(ctx context.Context, url string) (string, error) {
 	// 在传入的 ctx 基础上叠加超时控制，确保单个请求不会无限等待
 	ctx, cancel := context.WithTimeout(ctx, urlConvertTimeout)
 	defer cancel()

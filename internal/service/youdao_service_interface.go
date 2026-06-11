@@ -2,7 +2,7 @@ package service
 
 import (
 	"YoudaoNoteLm/internal/model/entity"
-	"YoudaoNoteLm/internal/service/external"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 )
 
 // YoudaoService 有道云笔记服务接口
@@ -15,7 +15,7 @@ type YoudaoService interface {
 	GetBinding(userID uint) (*entity.YoudaoBinding, error)
 
 	// 浏览
-	ListNotes(userID uint, folderID string) ([]external.YoudaoNoteItem, error)
+	ListNotes(userID uint, folderID string) ([]externalYoudao.NoteItem, error)
 
 	// 导入
 	ImportNote(userID uint, notebookID uint, fileID string) (*entity.Source, error)

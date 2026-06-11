@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/logger"
 
@@ -22,14 +22,14 @@ import (
 type YoudaoAgent struct {
 	configService service.ConfigService
 	youdaoService service.YoudaoService
-	youdaoCLI     external.YoudaoCLI
+	youdaoCLI     externalYoudao.CLI
 }
 
 // NewYoudaoAgent 创建有道云笔记 Agent
 func NewYoudaoAgent(
 	configService service.ConfigService,
 	youdaoService service.YoudaoService,
-	youdaoCLI external.YoudaoCLI,
+	youdaoCLI externalYoudao.CLI,
 ) *YoudaoAgent {
 	return &YoudaoAgent{
 		configService: configService,

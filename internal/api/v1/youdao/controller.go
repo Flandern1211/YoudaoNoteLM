@@ -3,7 +3,7 @@ package youdao
 import (
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	"YoudaoNoteLm/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -69,10 +69,10 @@ func (ctrl *Controller) GetBinding(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"bound":    binding.Status == "active",
-		"status":   binding.Status,
-		"user_id":  binding.UserID,
-		"has_key":  binding.APIKey != "",
+		"bound":   binding.Status == "active",
+		"status":  binding.Status,
+		"user_id": binding.UserID,
+		"has_key": binding.APIKey != "",
 	})
 }
 
@@ -131,5 +131,5 @@ func (ctrl *Controller) ImportBatch(c *gin.Context) {
 	})
 }
 
-// 确保 external 包被引用（用于 Swagger 文档中的类型引用）
-var _ *external.YoudaoNoteItem
+// 确保 youdao 包被引用（用于 Swagger 文档中的类型引用）
+var _ *externalYoudao.NoteItem

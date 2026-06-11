@@ -1,4 +1,4 @@
-package external
+package youdao
 
 import (
 	"bufio"
@@ -16,31 +16,31 @@ import (
 	"go.uber.org/zap"
 )
 
-// YoudaoNoteItem 有道云笔记列表项
-type YoudaoNoteItem struct {
+// NoteItem 有道云笔记列表项
+type NoteItem struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Type     string `json:"type"` // "file" 或 "dir"
 	ParentID string `json:"parentId,omitempty"`
 }
 
-// YoudaoReadResult 有道云笔记读取结果
-type YoudaoReadResult struct {
+// ReadResult 有道云笔记读取结果
+type ReadResult struct {
 	Content   string `json:"content"`
 	RawFormat string `json:"rawFormat"` // md, note, txt
 	IsRaw     bool   `json:"isRaw"`
 }
 
-// YoudaoCLI 有道云笔记 CLI 接口
-type YoudaoCLI interface {
+// CLI 有道云笔记 CLI 接口
+type CLI interface {
 	// CheckAvailable 检查 CLI 是否可用
 	CheckAvailable() error
 	// List 列出目录下笔记（根目录传空字符串）
-	List(apiKey string, folderID string) ([]YoudaoNoteItem, error)
+	List(apiKey string, folderID string) ([]NoteItem, error)
 	// Read 读取笔记内容
-	Read(apiKey string, fileID string) (*YoudaoReadResult, error)
+	Read(apiKey string, fileID string) (*ReadResult, error)
 	// Search 搜索笔记
-	Search(apiKey string, keyword string) ([]YoudaoNoteItem, error)
+	Search(apiKey string, keyword string) ([]NoteItem, error)
 	// CreateNote 创建笔记
 	CreateNote(apiKey string, title string, content string, parentID string) (string, error)
 	// UpdateNote 更新笔记内容
@@ -51,20 +51,20 @@ type YoudaoCLI interface {
 	ConvertNote(fileID string, cookiesPath string) (string, error)
 }
 
-// youdaoCLI YoudaoCLI 实现
+// youdaoCLI CLI 实现
 type youdaoCLI struct {
 	cliPath   string
-	converter YoudaoNoteConverter
+	converter NoteConverter
 }
 
-// NewYoudaoCLI 创建 YoudaoCLI 实例
-func NewYoudaoCLI(cliPath string, converterScriptPath string) YoudaoCLI {
+// NewCLI 创建 CLI 实例
+func NewCLI(cliPath string, converterScriptPath string) CLI {
 	if cliPath == "" {
 		cliPath = "youdaonote"
 	}
-	var converter YoudaoNoteConverter
+	var converter NoteConverter
 	if converterScriptPath != "" {
-		converter = NewYoudaoNoteConverter(converterScriptPath)
+		converter = NewNoteConverter(converterScriptPath)
 	}
 	return &youdaoCLI{
 		cliPath:   cliPath,
@@ -178,8 +178,8 @@ func (c *youdaoCLI) CheckAvailable() error {
 //
 //	📁 目录名 (id: xxx)
 //	📄 笔记名 (id: yyy)
-func parseListOutput(output string) ([]YoudaoNoteItem, error) {
-	items := make([]YoudaoNoteItem, 0)
+func parseListOutput(output string) ([]NoteItem, error) {
+	items := make([]NoteItem, 0)
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -187,7 +187,7 @@ func parseListOutput(output string) ([]YoudaoNoteItem, error) {
 			continue
 		}
 
-		item := YoudaoNoteItem{}
+		item := NoteItem{}
 
 		// 尝试解析 Tab 分隔格式：[emoji] ID\tName
 		if strings.Contains(line, "\t") {
@@ -252,7 +252,7 @@ func parseListOutput(output string) ([]YoudaoNoteItem, error) {
 }
 
 // List 列出目录下笔记
-func (c *youdaoCLI) List(apiKey string, folderID string) ([]YoudaoNoteItem, error) {
+func (c *youdaoCLI) List(apiKey string, folderID string) ([]NoteItem, error) {
 	args := []string{"list"}
 	if folderID != "" {
 		args = append(args, "-f", folderID)
@@ -271,7 +271,7 @@ func (c *youdaoCLI) List(apiKey string, folderID string) ([]YoudaoNoteItem, erro
 }
 
 // Read 读取笔记内容
-func (c *youdaoCLI) Read(apiKey string, fileID string) (*YoudaoReadResult, error) {
+func (c *youdaoCLI) Read(apiKey string, fileID string) (*ReadResult, error) {
 	output, err := c.runWithKey(apiKey, []string{"read", fileID})
 	if err != nil {
 		return nil, err
@@ -289,7 +289,7 @@ func (c *youdaoCLI) Read(apiKey string, fileID string) (*YoudaoReadResult, error
 	if err := json.Unmarshal(output, &jsonResp); err == nil {
 		// 是 JSON 响应，检查 content 是否为 null
 		if jsonResp.Content == nil {
-			return &YoudaoReadResult{
+			return &ReadResult{
 				Content:   "",
 				RawFormat: "note",
 				IsRaw:     jsonResp.Raw,
@@ -297,7 +297,7 @@ func (c *youdaoCLI) Read(apiKey string, fileID string) (*YoudaoReadResult, error
 		}
 		// content 不为 nil，转为字符串
 		if contentStr, ok := jsonResp.Content.(string); ok {
-			return &YoudaoReadResult{
+			return &ReadResult{
 				Content:   contentStr,
 				RawFormat: "note",
 				IsRaw:     jsonResp.Raw,
@@ -306,7 +306,7 @@ func (c *youdaoCLI) Read(apiKey string, fileID string) (*YoudaoReadResult, error
 	}
 
 	// 普通文本响应
-	return &YoudaoReadResult{
+	return &ReadResult{
 		Content:   content,
 		RawFormat: "md",
 		IsRaw:     false,
@@ -314,7 +314,7 @@ func (c *youdaoCLI) Read(apiKey string, fileID string) (*YoudaoReadResult, error
 }
 
 // Search 搜索笔记
-func (c *youdaoCLI) Search(apiKey string, keyword string) ([]YoudaoNoteItem, error) {
+func (c *youdaoCLI) Search(apiKey string, keyword string) ([]NoteItem, error) {
 	output, err := c.runWithKey(apiKey, []string{"search", keyword})
 	if err != nil {
 		return nil, err

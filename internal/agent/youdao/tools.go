@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	"YoudaoNoteLm/pkg/logger"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -20,7 +20,7 @@ type ListNotesInput struct {
 }
 
 type ListNotesOutput struct {
-	Items []external.YoudaoNoteItem `json:"items"`
+	Items []externalYoudao.NoteItem `json:"items"`
 }
 
 func NewListNotesTool(youdaoService service.YoudaoService) (tool.InvokableTool, error) {
@@ -48,7 +48,7 @@ type ReadNoteOutput struct {
 	RawFormat string `json:"raw_format"`
 }
 
-func NewReadNoteTool(youdaoCLI external.YoudaoCLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
+func NewReadNoteTool(youdaoCLI externalYoudao.CLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
 	return utils.InferTool("read_note", "读取有道云笔记内容。输入笔记ID，返回笔记的 Markdown 内容",
 		func(ctx context.Context, input *ReadNoteInput) (*ReadNoteOutput, error) {
 			userID := GetUserID(ctx)
@@ -74,10 +74,10 @@ type SearchNotesInput struct {
 }
 
 type SearchNotesOutput struct {
-	Items []external.YoudaoNoteItem `json:"items"`
+	Items []externalYoudao.NoteItem `json:"items"`
 }
 
-func NewSearchNotesTool(youdaoCLI external.YoudaoCLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
+func NewSearchNotesTool(youdaoCLI externalYoudao.CLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
 	return utils.InferTool("search_notes", "搜索有道云笔记。输入关键词，返回匹配的笔记列表",
 		func(ctx context.Context, input *SearchNotesInput) (*SearchNotesOutput, error) {
 			userID := GetUserID(ctx)
@@ -108,7 +108,7 @@ type CreateNoteOutput struct {
 	NoteID string `json:"note_id"`
 }
 
-func NewCreateNoteTool(youdaoCLI external.YoudaoCLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
+func NewCreateNoteTool(youdaoCLI externalYoudao.CLI, youdaoService service.YoudaoService) (tool.InvokableTool, error) {
 	return utils.InferTool("create_note", "创建有道云笔记。输入标题和Markdown内容，保存到有道云笔记",
 		func(ctx context.Context, input *CreateNoteInput) (*CreateNoteOutput, error) {
 			userID := GetUserID(ctx)

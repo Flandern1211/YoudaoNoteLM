@@ -1,4 +1,4 @@
-package external
+package youdao
 
 import (
 	"context"
@@ -12,21 +12,21 @@ import (
 	"time"
 )
 
-// YoudaoNoteConverter 有道云笔记格式转换器（调用 youdaonote-pull 的 Python 脚本）
-type YoudaoNoteConverter interface {
+// NoteConverter 有道云笔记格式转换器（调用 youdaonote-pull 的 Python 脚本）
+type NoteConverter interface {
 	// ConvertNote 将 .note 格式转换为 Markdown
 	ConvertNote(fileID string, cookiesPath string) (string, error)
 }
 
-// youdaoNoteConverter 实现
-type youdaoNoteConverter struct {
+// noteConverter 实现
+type noteConverter struct {
 	scriptPath string
 }
 
-// NewYoudaoNoteConverter 创建转换器实例
+// NewNoteConverter 创建转换器实例
 // scriptPath: convert_note.py 脚本的路径
-func NewYoudaoNoteConverter(scriptPath string) YoudaoNoteConverter {
-	return &youdaoNoteConverter{scriptPath: scriptPath}
+func NewNoteConverter(scriptPath string) NoteConverter {
+	return &noteConverter{scriptPath: scriptPath}
 }
 
 // convertResult Python 脚本返回的结果
@@ -36,7 +36,7 @@ type convertResult struct {
 }
 
 // ConvertNote 调用 Python 脚本转换 .note 文件为 Markdown
-func (c *youdaoNoteConverter) ConvertNote(fileID string, cookiesPath string) (string, error) {
+func (c *noteConverter) ConvertNote(fileID string, cookiesPath string) (string, error) {
 	// 检查脚本是否存在
 	if _, err := os.Stat(c.scriptPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("转换脚本不存在: %s", c.scriptPath)

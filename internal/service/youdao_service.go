@@ -8,7 +8,7 @@ import (
 
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service/external"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	"YoudaoNoteLm/pkg/logger"
 
 	"github.com/google/uuid"
@@ -16,7 +16,7 @@ import (
 )
 
 type youdaoService struct {
-	cli         external.YoudaoCLI
+	cli         externalYoudao.CLI
 	bindingRepo repository.YoudaoBindingRepository
 	sourceRepo  repository.SourceRepository
 	embedding   EmbeddingService
@@ -26,7 +26,7 @@ type youdaoService struct {
 
 // NewYoudaoService 创建有道云笔记服务
 func NewYoudaoService(
-	cli external.YoudaoCLI,
+	cli externalYoudao.CLI,
 	bindingRepo repository.YoudaoBindingRepository,
 	sourceRepo repository.SourceRepository,
 	embedding EmbeddingService,
@@ -86,7 +86,7 @@ func (s *youdaoService) GetBinding(userID uint) (*entity.YoudaoBinding, error) {
 }
 
 // ListNotes 浏览有道云笔记目录
-func (s *youdaoService) ListNotes(userID uint, folderID string) ([]external.YoudaoNoteItem, error) {
+func (s *youdaoService) ListNotes(userID uint, folderID string) ([]externalYoudao.NoteItem, error) {
 	apiKey, err := s.getAPIKey(userID)
 	if err != nil {
 		return nil, err

@@ -6,8 +6,9 @@ import (
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
+	externalMarkitdown "YoudaoNoteLm/internal/service/external/markitdown"
 	externalStorage "YoudaoNoteLm/internal/service/external/storage"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
 	"YoudaoNoteLm/pkg/database"
@@ -163,7 +164,7 @@ func (a *App) initDependencies() error {
 	notebookSvc := service.NewNotebookService(notebookRepo)
 
 	// 创建外部服务客户端（MarkItDown 直接从 config.yaml 读取，不通过 Provider Registry）
-	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
+	markitdownClient := externalMarkitdown.NewClient(a.cfg.External.MarkItDown.URL)
 	minioStorage, err := externalStorage.NewMinIOStorage(
 		a.cfg.External.MinIO.Endpoint,
 		a.cfg.External.MinIO.AccessKey,
@@ -202,7 +203,7 @@ func (a *App) initDependencies() error {
 	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchagent)
 
 	// 创建有道云笔记 CLI 客户端（支持 .note 格式转换）
-	youdaoCLI := external.NewYoudaoCLI(a.cfg.External.Youdao.CLIPath, a.cfg.External.Youdao.ConverterScriptPath)
+	youdaoCLI := externalYoudao.NewCLI(a.cfg.External.Youdao.CLIPath, a.cfg.External.Youdao.ConverterScriptPath)
 
 	// 创建有道云笔记绑定 Repository
 	youdaoBindingRepo := repository.NewYoudaoBindingRepository(a.mysqlDB)
