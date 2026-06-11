@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	log   *zap.Logger
-	sugar *zap.SugaredLogger
+	log   = zap.NewNop()
+	sugar = log.Sugar()
 )
 
 func init() {

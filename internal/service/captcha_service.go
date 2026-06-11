@@ -68,7 +68,7 @@ func (s *captchaService) initResources() error {
 	return initErr
 }
 
-// captchaKey Redis key
+// captchaKey Redis 键
 func (s *captchaService) captchaKey(captchaID string) string {
 	return fmt.Sprintf("captcha:%s", captchaID)
 }

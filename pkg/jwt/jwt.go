@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,14 +17,12 @@ func GetParser() *jwt.Parser {
 }
 
 // generateJTI 生成唯一的 Token ID
-func generateJTI() string {
+func generateJTI() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		// crypto/rand.Read 在正常情况下不会失败
-		// 如果失败说明系统熵源不可用，panic 是合理的
-		panic("crypto/rand.Read 失败: " + err.Error())
+		return "", fmt.Errorf("生成 JTI 失败: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 var (
@@ -43,12 +42,17 @@ func GenerateAccessToken(userID uint, username string) (string, error) {
 	cfg := config.Get().JWT
 	exp := cfg.GetAccessTokenExp()
 
+	jti, err := generateJTI()
+	if err != nil {
+		return "", err
+	}
+
 	claims := CustomClaims{
 		UserID:    userID,
 		Username:  username,
 		TokenType: AccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        generateJTI(),
+			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
@@ -65,12 +69,17 @@ func GenerateRefreshToken(userID uint, username string) (string, error) {
 	cfg := config.Get().JWT
 	exp := cfg.GetRefreshTokenExp()
 
+	jti, err := generateJTI()
+	if err != nil {
+		return "", err
+	}
+
 	claims := CustomClaims{
 		UserID:    userID,
 		Username:  username,
 		TokenType: RefreshToken,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        generateJTI(),
+			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(exp)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),

@@ -113,12 +113,13 @@ func OptionalAuth(blacklist service.TokenBlacklistService) gin.HandlerFunc {
 		claims, err := jwt.ParseToken(parts[1])
 		if err == nil && claims.TokenType == jwt.AccessToken {
 			// 检查黑名单
-			revoked, revokeErr := blacklist.IsRevoked(c.Request.Context(), claims.ID)
-			if revokeErr != nil {
-				// 黑名单查询失败时放行（降级策略），但记录日志
-				logger.Warn("OptionalAuth: 查询token黑名单失败", zap.Error(revokeErr))
+			revoked, err := blacklist.IsRevoked(c.Request.Context(), claims.ID)
+			if err != nil {
+				logger.Error("检查 token 黑名单失败", zap.Error(err))
+				// 查询失败时默认视为已吊销（安全优先）
+				revoked = true
 			}
-			if revokeErr == nil && !revoked {
+			if !revoked {
 				c.Set(ContextUserID, claims.GetUserID())
 				c.Set(ContextUsername, claims.GetUsername())
 			}

@@ -5,14 +5,15 @@ import (
 	dto "YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
+	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/logger"
 	"YoudaoNoteLm/pkg/response"
 	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
-	"os"
 	"path/filepath"
+	"time"
 
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"go.uber.org/zap"
@@ -23,13 +24,15 @@ import (
 type userService struct {
 	userRepo      repository.UserRepository
 	verifyCodeSvc VerifyCodeService
+	storage       external.FileStorage
 }
 
 // NewUserService 创建用户服务
-func NewUserService(userRepo repository.UserRepository, verifyCodeSvc VerifyCodeService) UserService {
+func NewUserService(userRepo repository.UserRepository, verifyCodeSvc VerifyCodeService, storage external.FileStorage) UserService {
 	return &userService{
 		userRepo:      userRepo,
 		verifyCodeSvc: verifyCodeSvc,
+		storage:       storage,
 	}
 }
 
@@ -153,55 +156,45 @@ func (s *userService) UploadAvatar(id uint, file *multipart.FileHeader) (string,
 		return "", err
 	}
 
-	// 删除旧头像文件
+	// 删除旧头像
 	if user.Avatar != "" {
-		oldPath := "." + user.Avatar // 转为相对路径
-		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
-			logger.Warn("删除旧头像失败", zap.String("path", oldPath), zap.Error(err))
+		if err := s.storage.Delete(user.Avatar); err != nil {
+			logger.Warn("删除旧头像失败", zap.String("path", user.Avatar), zap.Error(err))
 		}
 	}
 
-	// 创建上传目录
-	uploadDir := "uploads/avatars"
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		logger.Error("创建上传目录失败", zap.Error(err))
-		return "", fmt.Errorf("创建上传目录失败: %w", err)
-	}
-
-	// 生成文件名：{user_id}.{ext}
-	filename := fmt.Sprintf("%d%s", id, ext)
-	savePath := filepath.Join(uploadDir, filename)
-
-	// 打开上传文件
+	// 上传到 MinIO，使用 avatars/{user_id}.{ext} 作为 objectName
+	objectName := fmt.Sprintf("avatars/%d%s", id, ext)
 	src, err := file.Open()
 	if err != nil {
-		logger.Error("打开上传文件失败", zap.Error(err))
 		return "", fmt.Errorf("打开上传文件失败: %w", err)
 	}
 	defer src.Close()
 
-	// 创建目标文件
-	dst, err := os.Create(savePath)
+	// 通过 UploadBytes 上传，确保 objectName 可控
+	fileBytes, err := io.ReadAll(src)
 	if err != nil {
-		logger.Error("创建目标文件失败", zap.Error(err))
-		return "", fmt.Errorf("创建目标文件失败: %w", err)
+		return "", fmt.Errorf("读取上传文件失败: %w", err)
 	}
-	defer dst.Close()
-
-	// 复制文件内容
-	if _, err := io.Copy(dst, src); err != nil {
-		logger.Error("保存头像文件失败", zap.Error(err))
-		return "", fmt.Errorf("保存头像文件失败: %w", err)
+	if err := s.storage.UploadBytes(objectName, fileBytes, file.Header.Get("Content-Type")); err != nil {
+		return "", fmt.Errorf("上传头像到 MinIO 失败: %w", err)
 	}
 
-	// 更新用户头像 URL
-	avatarURL := fmt.Sprintf("/uploads/avatars/%s", filename)
-	user.Avatar = avatarURL
+	// 更新用户头像路径（存储 objectName，访问时通过预签名 URL）
+	user.Avatar = objectName
 	if err := s.userRepo.Update(user); err != nil {
 		return "", err
 	}
 
-	return avatarURL, nil
+	// 生成预签名 URL 返回给前端
+	presignedURL, err := s.storage.GetPresignedURL(objectName, 24*time.Hour)
+	if err != nil {
+		logger.Warn("生成头像预签名 URL 失败，返回 objectName", zap.Error(err))
+		return objectName, nil
+	}
+
+	logger.Info("头像上传成功", zap.Uint("user_id", id), zap.String("object", objectName))
+	return presignedURL, nil
 }
 
 // ChangePassword 修改密码
@@ -246,9 +239,8 @@ func (s *userService) DeleteAccount(id uint, req *request.DeleteAccountRequest) 
 
 	// 删除头像文件
 	if user.Avatar != "" {
-		avatarPath := "." + user.Avatar
-		if err := os.Remove(avatarPath); err != nil && !os.IsNotExist(err) {
-			logger.Warn("删除头像文件失败", zap.String("path", avatarPath), zap.Error(err))
+		if err := s.storage.Delete(user.Avatar); err != nil {
+			logger.Warn("删除头像失败", zap.String("path", user.Avatar), zap.Error(err))
 		}
 	}
 
@@ -258,13 +250,22 @@ func (s *userService) DeleteAccount(id uint, req *request.DeleteAccountRequest) 
 
 // GetUserResponse 获取用户响应
 func (s *userService) GetUserResponse(user *entity.User) *dto.UserResponse {
+	avatarURL := user.Avatar
+	// 如果头像是 MinIO 对象路径，生成预签名 URL
+	if user.Avatar != "" && s.storage != nil {
+		if presignedURL, err := s.storage.GetPresignedURL(user.Avatar, 24*time.Hour); err == nil {
+			avatarURL = presignedURL
+		} else {
+			logger.Warn("生成头像预签名 URL 失败", zap.String("path", user.Avatar), zap.Error(err))
+		}
+	}
+
 	return &dto.UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Email:     user.Email,
 		Nickname:  user.Nickname,
-		Avatar:    user.Avatar,
-		Role:      user.Role,
+		Avatar:    avatarURL,
 		Status:    user.Status,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,

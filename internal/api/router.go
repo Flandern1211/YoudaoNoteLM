@@ -7,16 +7,19 @@ import (
 	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/providers"
 	search "YoudaoNoteLm/internal/api/v1/search"
+	"YoudaoNoteLm/internal/api/v1/notebook"
+	"YoudaoNoteLm/internal/api/v1/search"
 	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
 	"YoudaoNoteLm/internal/api/v1/user_config"
 	youdao "YoudaoNoteLm/internal/api/v1/youdao"
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/service"
+
 	"github.com/gin-gonic/gin"
 )
 
-// Router 路由
+// Router HTTP 路由装配器。
 type Router struct {
 	userCtrl       *user.Controller
 	authCtrl       *auth.Controller
@@ -31,7 +34,7 @@ type Router struct {
 	youdaoCtrl     *youdao.Controller
 }
 
-// NewRouter 创建路由
+// NewRouter 创建路由。
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
@@ -61,7 +64,7 @@ func NewRouter(
 	}
 }
 
-// Setup 设置路由
+// Setup 注册所有路由。
 func (r *Router) Setup(engine *gin.Engine) {
 	// 全局中间件
 	engine.Use(middleware.Recovery())

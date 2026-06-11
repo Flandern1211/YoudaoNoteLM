@@ -44,16 +44,23 @@ const (
 	CodeResourceAlreadyExists = 3002
 	CodeResourceLocked        = 3003
 
-	// 导入模块错误码 4xxxx
-	CodeUnsupportedFormat     = 40001
-	CodeFileTooLarge          = 40002
-	CodeFileParseFailed       = 40003
-	CodeWebScrapeFailed       = 40004
-	CodeASTranscriptionFailed = 40005
-	CodeSearchQuotaExhausted  = 40006
-	CodeInvalidYoudaoAPIKey   = 40007
-	CodeDuplicateImport       = 40008
-	CodePreviewExpired        = 40009
+	// 导入模块错误 4xxxx
+	CodeUnsupportedFormat           = 40001
+	CodeFileTooLarge                = 40002
+	CodeFileParseFailed             = 40003
+	CodeWebScrapeFailed             = 40004
+	CodeASTranscriptionFailed       = 40005
+	CodeSearchQuotaExhausted        = 40006
+	CodeInvalidYoudaoAPIKey         = 40007
+	CodeDuplicateImport             = 40008
+	CodePreviewExpired              = 40009
+	CodeSearchProviderNotConfigured = 40010
+	CodeSearchInvalidAPIKey         = 40011
+	CodeSearchRequestTimeout        = 40012
+	CodeSearchProviderUnavailable   = 40013
+	CodeSearchInvalidResponse       = 40014
+	CodeSearchProviderEmptyResult   = 40015
+	CodeSearchNormalizedEmptyResult = 40016
 
 	// 搜索 Agent 错误码 4xxxx（续）
 	CodeLLMNotConfigured   = 40010
@@ -70,7 +77,7 @@ const (
 	CodeConfigTestInvalid = 60003 // 配置参数无效
 )
 
-// 错误码对应的文本消息
+// 错误码默认消息
 var codeMessages = map[int]string{
 	CodeSuccess:               "成功",
 	CodeBadRequest:            "请求参数错误",
@@ -120,7 +127,7 @@ var codeMessages = map[int]string{
 	CodeConfigTestInvalid:     "配置参数无效",
 }
 
-// GetMessage 获取错误码对应的文本消息
+// GetMessage 获取错误码消息
 func GetMessage(code int) string {
 	if msg, ok := codeMessages[code]; ok {
 		return msg
