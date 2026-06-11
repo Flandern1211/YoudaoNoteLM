@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -22,8 +23,10 @@ type RerankScore struct {
 // RerankerConfig Reranker 配置
 type RerankerConfig struct {
 	APIKey  string
-	Model   string // 默认 "m3-v2-rerank"
-	BaseURL string // 默认 "https://ark.cn-beijing.volces.com/api/v3"
+	Model   string        // 默认 "m3-v2-rerank"
+	BaseURL string        // 默认 "https://ark.cn-beijing.volces.com/api/v3"
+	TopN    int           // 返回 TopN 结果，默认 0 表示返回全部
+	Timeout time.Duration // HTTP 超时，默认 30s
 }
 
 // DoubaoReranker 豆包 Rerank API 封装
@@ -31,6 +34,7 @@ type DoubaoReranker struct {
 	apiKey  string
 	model   string
 	baseURL string
+	topN    int
 	client  *http.Client
 }
 
@@ -46,11 +50,17 @@ func NewDoubaoReranker(cfg RerankerConfig) *DoubaoReranker {
 		model = "m3-v2-rerank"
 	}
 
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	return &DoubaoReranker{
 		apiKey:  cfg.APIKey,
 		model:   model,
 		baseURL: baseURL,
-		client:  &http.Client{},
+		topN:    cfg.TopN,
+		client:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -81,11 +91,15 @@ func (r *DoubaoReranker) Rerank(ctx context.Context, query string, documents []s
 	}
 
 	// 构建请求
+	topN := r.topN
+	if topN <= 0 {
+		topN = len(documents) // 默认返回全部
+	}
 	reqBody := rerankRequest{
 		Model:     r.model,
 		Query:     query,
 		Documents: documents,
-		TopN:      len(documents),
+		TopN:      topN,
 	}
 
 	jsonData, err := json.Marshal(reqBody)

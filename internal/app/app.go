@@ -203,6 +203,8 @@ func (a *App) initDependencies() {
 				APIKey:  a.cfg.External.Reranker.APIKey,
 				Model:   a.cfg.External.Reranker.Model,
 				BaseURL: a.cfg.External.Reranker.BaseURL,
+				TopN:    a.cfg.External.Reranker.TopN,
+				Timeout: a.cfg.External.Reranker.Timeout,
 			})
 			logger.Info("Reranker 初始化成功")
 		} else {

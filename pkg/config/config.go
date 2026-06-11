@@ -31,9 +31,11 @@ type MilvusConfig struct {
 
 // RerankerConfig Rerank API 配置
 type RerankerConfig struct {
-	APIKey  string `mapstructure:"api_key"`
-	Model   string `mapstructure:"model"`
-	BaseURL string `mapstructure:"base_url"`
+	APIKey  string        `mapstructure:"api_key"`
+	Model   string        `mapstructure:"model"`
+	BaseURL string        `mapstructure:"base_url"`
+	TopN    int           `mapstructure:"top_n"`     // 返回 TopN 结果，0 表示全部
+	Timeout time.Duration `mapstructure:"timeout"`   // HTTP 超时，默认 30s
 }
 
 // MarkItDownConfig 文档转换服务配置
