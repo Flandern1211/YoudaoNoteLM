@@ -195,7 +195,19 @@ func (a *App) initDependencies() {
 			}
 			return rag.NewEmbedder(ctx, cfg)
 		}
-		rerankProvider := rag.NewRerankProvider(userConfigRepo)
+
+		// 创建 Reranker（使用全局配置）
+		var reranker *rag.DoubaoReranker
+		if a.cfg.External.Reranker.APIKey != "" {
+			reranker = rag.NewDoubaoReranker(rag.RerankerConfig{
+				APIKey:  a.cfg.External.Reranker.APIKey,
+				Model:   a.cfg.External.Reranker.Model,
+				BaseURL: a.cfg.External.Reranker.BaseURL,
+			})
+			logger.Info("Reranker 初始化成功")
+		} else {
+			logger.Warn("未配置 Reranker APIKey，跳过 Rerank 步骤")
+		}
 
 		// 创建独立的 MilvusWriter 用于检索（Milvus 客户端轻量）
 		milvusWriter, err := rag.NewMilvusWriter(context.Background(), rag.MilvusIndexerConfig{
@@ -209,7 +221,7 @@ func (a *App) initDependencies() {
 				parentBlockRepo,
 				sourceRepo,
 				embedderProvider,
-				rerankProvider,
+				reranker,
 				5, // defaultTopK
 			)
 			logger.Info("RAGRetriever 初始化成功")

@@ -10,8 +10,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"YoudaoNoteLm/internal/model/entity"
-	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/pkg/logger"
 )
 
@@ -21,27 +19,31 @@ type RerankScore struct {
 	Score float32 // 相关度分数
 }
 
-// RerankProvider 根据 userID 获取 Reranker
-type RerankProvider func(ctx context.Context, userID uint) (*DoubaoReranker, error)
+// RerankerConfig Reranker 配置
+type RerankerConfig struct {
+	APIKey  string
+	Model   string // 默认 "m3-v2-rerank"
+	BaseURL string // 默认 "https://ark.cn-beijing.volces.com/api/v3"
+}
 
 // DoubaoReranker 豆包 Rerank API 封装
 type DoubaoReranker struct {
 	apiKey  string
-	model   string // Rerank 模型 ID
+	model   string
 	baseURL string
 	client  *http.Client
 }
 
 // NewDoubaoReranker 创建豆包 Reranker
-func NewDoubaoReranker(cfg *entity.UserConfig) *DoubaoReranker {
-	baseURL := "https://ark.cn-beijing.volces.com/api/v3"
-	if cfg.APIURL != "" {
-		baseURL = cfg.APIURL
+func NewDoubaoReranker(cfg RerankerConfig) *DoubaoReranker {
+	baseURL := cfg.BaseURL
+	if baseURL == "" {
+		baseURL = "https://ark.cn-beijing.volces.com/api/v3"
 	}
 
 	model := cfg.Model
 	if model == "" {
-		model = "doubao-rerank" // 默认模型
+		model = "m3-v2-rerank"
 	}
 
 	return &DoubaoReranker{
@@ -142,18 +144,4 @@ func (r *DoubaoReranker) Rerank(ctx context.Context, query string, documents []s
 	)
 
 	return scores, nil
-}
-
-// NewRerankProvider 创建 RerankProvider（从数据库读取用户配置）
-func NewRerankProvider(userConfigRepo repository.UserConfigRepository) RerankProvider {
-	return func(ctx context.Context, userID uint) (*DoubaoReranker, error) {
-		cfg, err := userConfigRepo.FindByUserAndType(userID, "embedding")
-		if err != nil {
-			return nil, fmt.Errorf("查询用户 rerank 配置失败: %w", err)
-		}
-		if cfg == nil {
-			return nil, fmt.Errorf("用户 %d 未配置 rerank", userID)
-		}
-		return NewDoubaoReranker(cfg), nil
-	}
 }

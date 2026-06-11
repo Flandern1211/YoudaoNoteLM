@@ -57,17 +57,18 @@ type ragRetriever struct {
 	parentBlockRepo  repository.ParentBlockRepository
 	sourceRepo       repository.SourceRepository
 	embedderProvider RetrieverEmbedderProvider
-	rerankProvider   RerankProvider
+	reranker         *DoubaoReranker // 可选，为 nil 时跳过 rerank
 	topK             int
 }
 
 // NewRAGRetriever 创建 RAGRetriever
+// reranker 可选，为 nil 时跳过 Rerank 步骤
 func NewRAGRetriever(
 	milvusSearcher MilvusSearcher,
 	parentBlockRepo repository.ParentBlockRepository,
 	sourceRepo repository.SourceRepository,
 	embedderProvider RetrieverEmbedderProvider,
-	rerankProvider RerankProvider,
+	reranker *DoubaoReranker,
 	topK int,
 ) RAGRetriever {
 	if topK <= 0 {
@@ -78,7 +79,7 @@ func NewRAGRetriever(
 		parentBlockRepo:  parentBlockRepo,
 		sourceRepo:       sourceRepo,
 		embedderProvider: embedderProvider,
-		rerankProvider:   rerankProvider,
+		reranker:         reranker,
 		topK:             topK,
 	}
 }
@@ -150,7 +151,7 @@ func (r *ragRetriever) Retrieve(ctx context.Context, req *RetrieveRequest) ([]*R
 	candidates := fused[:candidateK]
 
 	// 5. Rerank
-	reranked, err := r.doRerank(ctx, req.UserID, req.Query, candidates)
+	reranked, err := r.doRerank(ctx, req.Query, candidates)
 	if err != nil {
 		logger.Warn("Rerank 失败，降级为融合分数排序", zap.Error(err))
 		reranked = candidates
@@ -289,14 +290,9 @@ func (r *ragRetriever) parentRecovery(ctx context.Context, candidates []*Retriev
 }
 
 // doRerank 对候选结果执行 Rerank 重排序
-func (r *ragRetriever) doRerank(ctx context.Context, userID uint, query string, candidates []*RetrieveResult) ([]*RetrieveResult, error) {
-	if r.rerankProvider == nil || len(candidates) == 0 {
+func (r *ragRetriever) doRerank(ctx context.Context, query string, candidates []*RetrieveResult) ([]*RetrieveResult, error) {
+	if r.reranker == nil || len(candidates) == 0 {
 		return candidates, nil
-	}
-
-	reranker, err := r.rerankProvider(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("获取 reranker 失败: %w", err)
 	}
 
 	documents := make([]string, len(candidates))
@@ -308,7 +304,7 @@ func (r *ragRetriever) doRerank(ctx context.Context, userID uint, query string, 
 		}
 	}
 
-	scores, err := reranker.Rerank(ctx, query, documents)
+	scores, err := r.reranker.Rerank(ctx, query, documents)
 	if err != nil {
 		return nil, err
 	}

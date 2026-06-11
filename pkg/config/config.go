@@ -19,6 +19,7 @@ type ExternalConfig struct {
 	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
 	Milvus     MilvusConfig     `mapstructure:"milvus"`
+	Reranker   RerankerConfig   `mapstructure:"reranker"`
 }
 
 // MilvusConfig Milvus 向量数据库配置
@@ -26,6 +27,13 @@ type MilvusConfig struct {
 	Address  string `mapstructure:"address"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
+}
+
+// RerankerConfig Rerank API 配置
+type RerankerConfig struct {
+	APIKey  string `mapstructure:"api_key"`
+	Model   string `mapstructure:"model"`
+	BaseURL string `mapstructure:"base_url"`
 }
 
 // MarkItDownConfig 文档转换服务配置
