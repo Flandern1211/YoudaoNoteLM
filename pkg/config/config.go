@@ -19,10 +19,8 @@ type ExternalConfig struct {
 	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
 	Milvus     MilvusConfig     `mapstructure:"milvus"`
-	Reranker   RerankerConfig   `mapstructure:"reranker"`
 	Bocha      BochaConfig      `mapstructure:"bocha"`
 }
-
 
 // BochaConfig 博查联网搜索配置
 type BochaConfig struct {
@@ -35,20 +33,13 @@ type BochaConfig struct {
 	CacheTTLSeconds int    `mapstructure:"cache_ttl_seconds"`
 	MaxCount        int    `mapstructure:"max_count"`
 }
+
+// MilvusConfig Milvus 向量数据库配
 // MilvusConfig Milvus 向量数据库配置
 type MilvusConfig struct {
 	Address  string `mapstructure:"address"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
-}
-
-// RerankerConfig Rerank API 配置
-type RerankerConfig struct {
-	APIKey  string        `mapstructure:"api_key"`
-	Model   string        `mapstructure:"model"`
-	BaseURL string        `mapstructure:"base_url"`
-	TopN    int           `mapstructure:"top_n"`     // 返回 TopN 结果，0 表示全部
-	Timeout time.Duration `mapstructure:"timeout"`   // HTTP 超时，默认 30s
 }
 
 // MarkItDownConfig 文档转换服务配置

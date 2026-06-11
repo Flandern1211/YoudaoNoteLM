@@ -1,6 +1,8 @@
 package app
 
 import (
+	"YoudaoNoteLm/internal/api"
+	"Youd
 	"context"
 	"fmt"
 	"net/http"
@@ -10,10 +12,6 @@ import (
 	"time"
 	"YoudaoNoteLm/internal/api"
 	"YoudaoNoteLm/internal/rag"
-	"YoudaoNoteLm/internal/model/entity"
-	"YoudaoNoteLm/internal/repository"
-
-	"YoudaoNoteLm/internal/service"
 	"YoudaoNoteLm/internal/service/external"
 	"YoudaoNoteLm/pkg/cache"
 	"YoudaoNoteLm/pkg/config"
@@ -188,21 +186,6 @@ func (a *App) initDependencies() {
 			return rag.NewEmbedder(ctx, cfg)
 		}
 
-		// 创建 Reranker（使用全局配置）
-		var reranker *rag.DoubaoReranker
-		if a.cfg.External.Reranker.APIKey != "" {
-			reranker = rag.NewDoubaoReranker(rag.RerankerConfig{
-				APIKey:  a.cfg.External.Reranker.APIKey,
-				Model:   a.cfg.External.Reranker.Model,
-				BaseURL: a.cfg.External.Reranker.BaseURL,
-				TopN:    a.cfg.External.Reranker.TopN,
-				Timeout: a.cfg.External.Reranker.Timeout,
-			})
-			logger.Info("Reranker 初始化成功")
-		} else {
-			logger.Warn("未配置 Reranker APIKey，跳过 Rerank 步骤")
-		}
-
 		// 创建独立的 MilvusWriter 用于检索（Milvus 客户端轻量）
 		milvusWriter, err := rag.NewMilvusWriter(context.Background(), rag.MilvusIndexerConfig{
 			Address: a.cfg.External.Milvus.Address,
@@ -215,7 +198,6 @@ func (a *App) initDependencies() {
 				parentBlockRepo,
 				sourceRepo,
 				embedderProvider,
-				reranker,
 				5, // defaultTopK
 			)
 			logger.Info("RAGRetriever 初始化成功")

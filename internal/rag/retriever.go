@@ -57,18 +57,15 @@ type ragRetriever struct {
 	parentBlockRepo  repository.ParentBlockRepository
 	sourceRepo       repository.SourceRepository
 	embedderProvider RetrieverEmbedderProvider
-	reranker         *DoubaoReranker // 可选，为 nil 时跳过 rerank
 	topK             int
 }
 
 // NewRAGRetriever 创建 RAGRetriever
-// reranker 可选，为 nil 时跳过 Rerank 步骤
 func NewRAGRetriever(
 	milvusSearcher MilvusSearcher,
 	parentBlockRepo repository.ParentBlockRepository,
 	sourceRepo repository.SourceRepository,
 	embedderProvider RetrieverEmbedderProvider,
-	reranker *DoubaoReranker,
 	topK int,
 ) RAGRetriever {
 	if topK <= 0 {
@@ -79,7 +76,6 @@ func NewRAGRetriever(
 		parentBlockRepo:  parentBlockRepo,
 		sourceRepo:       sourceRepo,
 		embedderProvider: embedderProvider,
-		reranker:         reranker,
 		topK:             topK,
 	}
 }
@@ -150,23 +146,16 @@ func (r *ragRetriever) Retrieve(ctx context.Context, req *RetrieveRequest) ([]*R
 	}
 	candidates := fused[:candidateK]
 
-	// 5. Rerank
-	reranked, err := r.doRerank(ctx, req.Query, candidates)
-	if err != nil {
-		logger.Warn("Rerank 失败，降级为融合分数排序", zap.Error(err))
-		reranked = candidates
+	// 5. TopK
+	if len(candidates) > topK {
+		candidates = candidates[:topK]
 	}
 
-	// 6. TopK
-	if len(reranked) > topK {
-		reranked = reranked[:topK]
-	}
-
-	// 7. Parent Recovery
-	results, err := r.parentRecovery(ctx, reranked)
+	// 6. Parent Recovery
+	results, err := r.parentRecovery(ctx, candidates)
 	if err != nil {
 		logger.Warn("Parent Recovery 失败，返回原始结果", zap.Error(err))
-		return reranked, nil
+		return candidates, nil
 	}
 
 	return results, nil
@@ -285,39 +274,6 @@ func (r *ragRetriever) parentRecovery(ctx context.Context, candidates []*Retriev
 			c.SourceName = name
 		}
 	}
-
-	return candidates, nil
-}
-
-// doRerank 对候选结果执行 Rerank 重排序
-func (r *ragRetriever) doRerank(ctx context.Context, query string, candidates []*RetrieveResult) ([]*RetrieveResult, error) {
-	if r.reranker == nil || len(candidates) == 0 {
-		return candidates, nil
-	}
-
-	documents := make([]string, len(candidates))
-	for i, c := range candidates {
-		if c.ParentContent != "" {
-			documents[i] = c.ParentContent
-		} else {
-			documents[i] = c.Content
-		}
-	}
-
-	scores, err := r.reranker.Rerank(ctx, query, documents)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, score := range scores {
-		if score.Index >= 0 && score.Index < len(candidates) {
-			candidates[score.Index].Score = score.Score
-		}
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
-	})
 
 	return candidates, nil
 }
