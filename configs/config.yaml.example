@@ -1,69 +1,70 @@
-
-# 服务器配置
 app:
   name: "youdao-api"
   version: "1.0.0"
-  mode: "debug"  # debug, release, test
+  mode: "debug"
   port: 8080
 
-# MySQL 数据库配置
 database:
   mysql:
     host: "localhost"
     port: 3306
-    user: "root"
+    username: "root"
     password: "your_password"
-    dbname: "your_database"
+    database: "your_database"
     max_idle_conns: 10
     max_open_conns: 100
   redis:
     host: "localhost"
     port: 6379
-    password: ""  # 无密码留空
-    db: 0         # 数据库编号
+    password: ""
+    db: 0
     pool_size: 10
 
-# Milvus 向量数据库配置
-milvus:
-  host: "localhost"
-  port: 19530
-
-# JWT 配置
 jwt:
-  secret: "your-secret-key-here"  # 请修改为随机生成的密钥
-  access_token_exp: "15m"     # Access Token 过期时间：15 分钟
-  refresh_token_exp: "24h"    # Refresh Token 过期时间：1 天
-  issuer: "mindtrace"         # Token 签发者
+  secret: "your-secret-key-here"
+  access_token_exp: "15m"
+  refresh_token_exp: "24h"
+  issuer: "mindtrace"
 
-# 外部服务配置
 external:
   markitdown:
-    url: "http://localhost:8085"       # MarkItDown 文档转换服务地址
+    url: "http://localhost:8085"
   asr:
-    provider: "aliyun_nls"             # aliyun_nls / whisper / ...
+    provider: "aliyun_nls"
     params:
       access_key_id: "your_key_id"
       access_key_secret: "your_key_secret"
       app_key: "your_app_key"
   minio:
-    endpoint: "localhost:9000"         # MinIO 地址（不带 http://）
-    access_key: "minioadmin"           # MinIO Access Key
-    secret_key: "minioadmin"           # MinIO Secret Key
-    bucket: "youdaonotelm"             # MinIO Bucket 名称
+    endpoint: "localhost:9000"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    bucket: "youdaonotelm"
+  milvus:
+    address: "localhost:19530"
+    username: ""
+    password: ""
+  bocha:
+    base_url: "https://api.bochaai.com"
+    endpoint: "/v1/web-search"
+    api_key: ""
+    timeout_seconds: 15
+    default_count: 5
+    summary: true
+    cache_ttl_seconds: 300
+    max_count: 10
 
-# 日志配置
 log:
-  level: "debug"  # debug, info, warn, error
+  level: "debug"
   filename: "logs/app.log"
-  max_size: 100    # MB
-  max_backups: 3   # 保留旧文件的最大个数
-  max_age: 28      # 保留旧文件的最大天数
-  compress: true   # 是否压缩
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true
 
-#邮箱配置
 email:
   host: "smtp.qq.com"
   port: 587
-  username: ""  // 自己的qq邮箱
-  password: ""  // 开通smtp之后认证的密码，不是qq密码
-  from: ""  # 发件人地址。自己的qq邮箱
+  username: ""
+  password: ""
+  from: ""

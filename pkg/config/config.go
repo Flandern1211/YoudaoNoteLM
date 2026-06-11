@@ -19,6 +19,19 @@ type ExternalConfig struct {
 	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
 	Milvus     MilvusConfig     `mapstructure:"milvus"`
+	Bocha      BochaConfig      `mapstructure:"bocha"`
+}
+
+// BochaConfig 博查联网搜索配置
+type BochaConfig struct {
+	BaseURL         string `mapstructure:"base_url"`
+	Endpoint        string `mapstructure:"endpoint"`
+	APIKey          string `mapstructure:"api_key"`
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
+	DefaultCount    int    `mapstructure:"default_count"`
+	Summary         bool   `mapstructure:"summary"`
+	CacheTTLSeconds int    `mapstructure:"cache_ttl_seconds"`
+	MaxCount        int    `mapstructure:"max_count"`
 }
 
 // MilvusConfig Milvus 向量数据库配置
