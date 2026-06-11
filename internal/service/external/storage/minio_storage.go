@@ -43,7 +43,11 @@ func (s *MinioStorage) Upload(file *multipart.FileHeader) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("打开上传文件失败: %w", err)
 	}
-	defer src.Close()
+	defer func() {
+		if closeErr := src.Close(); closeErr != nil {
+			logger.Warn("关闭上传文件句柄失败", zap.String("file", file.Filename), zap.Error(closeErr))
+		}
+	}()
 
 	objectName := fmt.Sprintf("uploads/%d%s", time.Now().UnixMilli(), filepath.Ext(file.Filename))
 
@@ -63,7 +67,11 @@ func (s *MinioStorage) Download(filePath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("MinIO 获取文件失败: %w", err)
 	}
-	defer obj.Close()
+	defer func() {
+		if closeErr := obj.Close(); closeErr != nil {
+			logger.Warn("关闭 MinIO 对象流失败", zap.String("path", filePath), zap.Error(closeErr))
+		}
+	}()
 
 	data, err := io.ReadAll(obj)
 	if err != nil {
@@ -96,5 +104,8 @@ func (s *MinioStorage) UploadBytes(objectName string, data []byte, contentType s
 	_, err := s.client.PutObject(context.Background(), s.bucket, objectName,
 		bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{ContentType: contentType})
-	return err
+	if err != nil {
+		return fmt.Errorf("MinIO 上传字节数据失败: %w", err)
+	}
+	return nil
 }

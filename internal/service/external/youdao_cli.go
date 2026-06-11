@@ -10,6 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"YoudaoNoteLm/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 // YoudaoNoteItem 有道云笔记列表项
@@ -86,7 +90,11 @@ func (c *youdaoCLI) runWithKey(apiKey string, args []string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			logger.Warn("清理临时目录失败", zap.String("path", tmpDir), zap.Error(err))
+		}
+	}()
 
 	// 写入临时配置文件（CLI 读取 ~/.youdaonote.json）
 	cfg := youdaonoteConfig{
@@ -341,10 +349,16 @@ func (c *youdaoCLI) CreateNote(apiKey string, title string, content string, pare
 	if err != nil {
 		return "", fmt.Errorf("创建临时文件失败: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			logger.Warn("清理临时文件失败", zap.String("path", tmpFile.Name()), zap.Error(err))
+		}
+	}()
 
 	if _, err := tmpFile.Write(jsonBytes); err != nil {
-		tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.Warn("关闭临时文件失败", zap.String("path", tmpFile.Name()), zap.Error(closeErr))
+		}
 		return "", fmt.Errorf("写入临时文件失败: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
@@ -375,10 +389,16 @@ func (c *youdaoCLI) UpdateNote(apiKey string, fileID string, content string) err
 	if err != nil {
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			logger.Warn("清理临时文件失败", zap.String("path", tmpFile.Name()), zap.Error(err))
+		}
+	}()
 
 	if _, err := tmpFile.WriteString(content); err != nil {
-		tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			logger.Warn("关闭临时文件失败", zap.String("path", tmpFile.Name()), zap.Error(closeErr))
+		}
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {

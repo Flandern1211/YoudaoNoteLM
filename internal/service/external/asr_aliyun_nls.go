@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	nlsRegionID    = "cn-shanghai"
-	nlsProduct     = "nls-filetrans"
-	nlsDomain      = "filetrans.cn-shanghai.aliyuncs.com"
-	nlsAPIVersion  = "2018-08-17"
+	nlsRegionID     = "cn-shanghai"
+	nlsProduct      = "nls-filetrans"
+	nlsDomain       = "filetrans.cn-shanghai.aliyuncs.com"
+	nlsAPIVersion   = "2018-08-17"
 	nlsPollInterval = 3 * time.Second
 	nlsPollTimeout  = 10 * time.Minute
 )
@@ -76,11 +76,7 @@ func (s *aliyunNLSASRService) Transcribe(filePath string) (string, error) {
 		return "", fmt.Errorf("ASR 服务未配置文件存储，无法获取文件 URL")
 	}
 
-	minioStore, ok := s.storage.(*minioStorage)
-	if !ok {
-		return "", fmt.Errorf("存储类型不支持预签名 URL")
-	}
-	audioURL, err := minioStore.GetPresignedURL(filePath, 2*time.Hour)
+	audioURL, err := s.storage.GetPresignedURL(filePath, 2*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("生成音频文件URL失败: %w", err)
 	}

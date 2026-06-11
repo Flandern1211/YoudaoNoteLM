@@ -12,6 +12,9 @@ import (
 
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 // HealthCheckResult 健康检查结果
@@ -102,7 +105,11 @@ func (h *ConfigHealthChecker) testLLMOpenAICompatible(config *entity.UserConfig)
 		}
 		return &HealthCheckResult{Healthy: false, Message: "连接失败", Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Warn("关闭 HTTP 响应体失败", zap.String("url", url), zap.Error(err))
+		}
+	}()
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
@@ -223,7 +230,11 @@ func (h *ConfigHealthChecker) testLLMAnthropic(config *entity.UserConfig) *Healt
 		}
 		return &HealthCheckResult{Healthy: false, Message: "连接失败", Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Warn("关闭 HTTP 响应体失败", zap.String("url", url), zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		return &HealthCheckResult{
@@ -374,7 +385,11 @@ func (h *ConfigHealthChecker) testEmbedding(config *entity.UserConfig) *HealthCh
 		}
 		return &HealthCheckResult{Healthy: false, Message: "连接失败", Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Warn("关闭 HTTP 响应体失败", zap.String("url", url), zap.Error(err))
+		}
+	}()
 
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		return &HealthCheckResult{
@@ -450,7 +465,11 @@ func checkHTTPReachable(url string, timeout time.Duration) error {
 		}
 		return checkTCPReachable(url, timeout)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Warn("关闭 HTTP 响应体失败", zap.String("url", url), zap.Error(err))
+		}
+	}()
 	return nil
 }
 
@@ -474,7 +493,9 @@ func checkTCPReachable(rawURL string, timeout time.Duration) error {
 	if err != nil {
 		return fmt.Errorf("TCP 连接失败: %w", err)
 	}
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		logger.Warn("关闭 TCP 连接失败", zap.String("host", host), zap.Error(err))
+	}
 	return nil
 }
 
