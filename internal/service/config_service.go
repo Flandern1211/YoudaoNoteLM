@@ -211,7 +211,43 @@ func (s *configService) GetASRService(userID uint) (asr.ASRService, error) {
 }
 
 func (s *configService) GetEmbeddingService(userID uint) (embedding.EmbeddingService, error) {
-	svc, err := s.getService(userID, "embedding")
+	ctx := context.Background()
+
+	// 只查用户配置（先查缓存）
+	cacheKey := userConfigCacheKey(userID, "embedding")
+	var userCfg entity.UserConfig
+	if err := s.cache.Get(ctx, cacheKey, &userCfg); err == nil && userCfg.Enabled {
+		sc := external.NewServiceConfigFromEntity(
+			userCfg.Provider, userCfg.APIURL, userCfg.APIKey,
+			userCfg.Model, userCfg.ExtraConfig)
+		svc, err := s.registry.Create("embedding", userCfg.Provider, sc)
+		if err != nil {
+			return nil, err
+		}
+		embedSvc, ok := svc.(embedding.EmbeddingService)
+		if !ok {
+			return nil, fmt.Errorf("embedding provider 返回的类型不正确")
+		}
+		return embedSvc, nil
+	}
+
+	// 缓存未命中，查 DB
+	userCfgPtr, err := s.userConfigRepo.FindByUserAndType(userID, "embedding")
+	if err != nil {
+		return nil, fmt.Errorf("未配置 Embedding 服务，请在设置中添加 Embedding 配置")
+	}
+	if userCfgPtr == nil || !userCfgPtr.Enabled {
+		return nil, fmt.Errorf("未配置 Embedding 服务，请在设置中添加 Embedding 配置")
+	}
+
+	if cacheErr := s.cache.Set(ctx, cacheKey, userCfgPtr, userConfigTTL); cacheErr != nil {
+		logger.Warn("缓存用户配置失败", zap.String("key", cacheKey), zap.Error(cacheErr))
+	}
+
+	sc := external.NewServiceConfigFromEntity(
+		userCfgPtr.Provider, userCfgPtr.APIURL, userCfgPtr.APIKey,
+		userCfgPtr.Model, userCfgPtr.ExtraConfig)
+	svc, err := s.registry.Create("embedding", userCfgPtr.Provider, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +485,7 @@ func (s *configService) GetChatModelConfig(userID uint) (*ChatModelConfig, error
 		}
 	}
 
-	return nil, bizerrors.New(bizerrors.CodeInternalServiceError, "未配置LLM服务")
+	return nil, bizerrors.New(bizerrors.CodeLLMNotConfigured, "请先在设置中配置 LLM 服务")
 }
 
 // buildChatModelConfig 构建 ChatModelConfig
@@ -465,7 +501,7 @@ func (s *configService) buildChatModelConfig(provider, apiURL, apiKey, model, ex
 	}
 
 	if model == "" {
-		return nil, fmt.Errorf("LLM模型名称未配置")
+		return nil, bizerrors.New(bizerrors.CodeLLMNotConfigured, "请先在设置中配置 LLM 服务")
 	}
 
 	return &ChatModelConfig{
@@ -490,7 +526,7 @@ func (s *configService) createLLMClientFromConfig(provider, apiURL, apiKey, mode
 	}
 
 	if model == "" {
-		return nil, fmt.Errorf("LLM模型名称未配置")
+		return nil, bizerrors.New(bizerrors.CodeLLMNotConfigured, "请先在设置中配置 LLM 服务")
 	}
 
 	switch provider {

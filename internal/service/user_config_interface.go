@@ -30,4 +30,7 @@ type UserConfigService interface {
 
 	// 获取当前生效的配置（用户配置 > 系统配置 > 默认值）
 	GetActiveConfig(userID uint, configType string) (*entity.UserConfig, error)
+
+	// TestConfig 测试配置连通性（保存前验证）
+	TestConfig(configType string, config *entity.UserConfig) *HealthCheckResult
 }

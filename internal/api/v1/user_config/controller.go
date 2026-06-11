@@ -8,6 +8,7 @@ import (
 	"YoudaoNoteLm/internal/model/dto/request"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/service"
+	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,53 @@ type Controller struct {
 
 func NewController(configService service.UserConfigService, tokenBlacklist service.TokenBlacklistService) *Controller {
 	return &Controller{configService: configService, tokenBlacklist: tokenBlacklist}
+}
+
+// ===== Config Health Check =====
+
+// TestConfig 测试配置连通性（不保存，仅验证）
+func (ctrl *Controller) TestConfig(c *gin.Context) {
+	configType := c.Param("type")
+	validTypes := map[string]bool{
+		"llm": true, "search": true, "asr": true, "embedding": true,
+	}
+	if !validTypes[configType] {
+		response.BadRequest(c, "无效的配置类型")
+		return
+	}
+
+	var req request.UserConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	config := &entity.UserConfig{
+		Provider:    req.Provider,
+		APIKey:      req.APIKey,
+		APIURL:      req.APIURL,
+		Model:       req.Model,
+		ExtraConfig: string(req.ExtraConfig),
+	}
+
+	result := ctrl.configService.TestConfig(configType, config)
+	if result.Healthy {
+		response.SuccessWithMessage(c, result.Message, result)
+	} else {
+		response.ErrorWithData(c, bizerrors.CodeConfigTestFailed, result.Message, result)
+	}
+}
+
+// validateBeforeSave 保存前验证配置连通性
+// 如果验证失败，返回 false 并已写入响应；调用方应直接 return
+func (ctrl *Controller) validateBeforeSave(c *gin.Context, configType string, config *entity.UserConfig) bool {
+	result := ctrl.configService.TestConfig(configType, config)
+	if !result.Healthy {
+		response.ErrorWithData(c, bizerrors.CodeConfigTestFailed,
+			"配置验证失败: "+result.Message, result)
+		return false
+	}
+	return true
 }
 
 // ===== LLM Config =====
@@ -48,6 +96,11 @@ func (ctrl *Controller) CreateLLMConfig(c *gin.Context) {
 		ExtraConfig: string(req.ExtraConfig), Enabled: true,
 	}
 
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "llm", config) {
+		return
+	}
+
 	if err := ctrl.configService.CreateLLMConfig(userID, config); err != nil {
 		response.BizError(c, err)
 		return
@@ -73,11 +126,15 @@ func (ctrl *Controller) UpdateLLMConfig(c *gin.Context) {
 		ExtraConfig: string(req.ExtraConfig),
 	}
 
-	// 处理 enabled 字段
 	if req.Enabled != nil {
 		config.Enabled = *req.Enabled
 	} else {
-		config.Enabled = true // 默认启用
+		config.Enabled = true
+	}
+
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "llm", config) {
+		return
 	}
 
 	if err := ctrl.configService.UpdateLLMConfig(uint(id), config); err != nil {
@@ -126,6 +183,11 @@ func (ctrl *Controller) CreateSearchConfig(c *gin.Context) {
 		ExtraConfig: string(req.ExtraConfig), Enabled: true,
 	}
 
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "search", config) {
+		return
+	}
+
 	if err := ctrl.configService.CreateSearchConfig(userID, config); err != nil {
 		response.BizError(c, err)
 		return
@@ -155,6 +217,11 @@ func (ctrl *Controller) UpdateSearchConfig(c *gin.Context) {
 		config.Enabled = *req.Enabled
 	} else {
 		config.Enabled = true
+	}
+
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "search", config) {
+		return
 	}
 
 	if err := ctrl.configService.UpdateSearchConfig(uint(id), config); err != nil {
@@ -202,6 +269,11 @@ func (ctrl *Controller) CreateASRConfig(c *gin.Context) {
 		APIURL: req.APIURL, ExtraConfig: string(req.ExtraConfig), Enabled: true,
 	}
 
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "asr", config) {
+		return
+	}
+
 	if err := ctrl.configService.CreateASRConfig(userID, config); err != nil {
 		response.BizError(c, err)
 		return
@@ -230,6 +302,11 @@ func (ctrl *Controller) UpdateASRConfig(c *gin.Context) {
 		config.Enabled = *req.Enabled
 	} else {
 		config.Enabled = true
+	}
+
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "asr", config) {
+		return
 	}
 
 	if err := ctrl.configService.UpdateASRConfig(uint(id), config); err != nil {
@@ -336,6 +413,11 @@ func (ctrl *Controller) CreateEmbeddingConfig(c *gin.Context) {
 		ExtraConfig: string(req.ExtraConfig), Enabled: true,
 	}
 
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "embedding", config) {
+		return
+	}
+
 	if err := ctrl.configService.CreateEmbeddingConfig(userID, config); err != nil {
 		response.BizError(c, err)
 		return
@@ -365,6 +447,11 @@ func (ctrl *Controller) UpdateEmbeddingConfig(c *gin.Context) {
 		config.Enabled = *req.Enabled
 	} else {
 		config.Enabled = true
+	}
+
+	// 保存前验证连通性
+	if !ctrl.validateBeforeSave(c, "embedding", config) {
+		return
 	}
 
 	if err := ctrl.configService.UpdateEmbeddingConfig(uint(id), config); err != nil {

@@ -4,13 +4,13 @@ import "time"
 
 // Config 应用配置结构体
 type Config struct {
-	App       AppConfig       `mapstructure:"app"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	JWT       JWTConfig       `mapstructure:"jwt"`
-	Log       LogConfig       `mapstructure:"log"`
-	CORS      CORSConfig      `mapstructure:"cors"`
-	Email     EmailConfig     `mapstructure:"email"`
-	External  ExternalConfig  `mapstructure:"external"`
+	App      AppConfig      `mapstructure:"app"`
+	Database DatabaseConfig `mapstructure:"database"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
+	Log      LogConfig      `mapstructure:"log"`
+	CORS     CORSConfig     `mapstructure:"cors"`
+	Email    EmailConfig    `mapstructure:"email"`
+	External ExternalConfig `mapstructure:"external"`
 }
 
 // ExternalConfig 外部服务配置
@@ -22,7 +22,9 @@ type ExternalConfig struct {
 
 // YoudaoConfig 有道云笔记 CLI 配置
 type YoudaoConfig struct {
-	CLIPath string `mapstructure:"cli_path"` // CLI 路径，默认 "youdaonote"（在 PATH 中）
+	CLIPath             string `mapstructure:"cli_path"`              // CLI 路径，默认 "youdaonote"（在 PATH 中）
+	ConverterScriptPath string `mapstructure:"converter_script_path"` // youdaonote-pull 转换脚本路径（可选，用于 .note 格式转换）
+	CookiesPath         string `mapstructure:"cookies_path"`          // youdaonote cookies 文件路径（可选，用于 .note 格式转换）
 }
 
 // MarkItDownConfig 文档转换服务配置

@@ -13,6 +13,7 @@ type ImportNoteRequest struct {
 
 // ImportBatchRequest 批量导入请求
 type ImportBatchRequest struct {
-	FileIDs    []string `json:"file_ids" binding:"required,min=1"`
-	NotebookID uint     `json:"notebook_id" binding:"required"`
+	FileIDs    []string          `json:"file_ids" binding:"required,min=1"`
+	NotebookID uint              `json:"notebook_id" binding:"required"`
+	FileNames  map[string]string `json:"file_names,omitempty"` // fileID -> 笔记标题（可选）
 }

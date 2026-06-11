@@ -170,7 +170,8 @@ func NewImportNotesBatchTool(youdaoService service.YoudaoService) (tool.Invokabl
 	return utils.InferTool("import_notes_batch", "批量导入有道云笔记到本系统。输入笔记ID列表和目标笔记本ID，返回导入任务ID",
 		func(ctx context.Context, input *ImportNotesBatchInput) (*ImportNotesBatchOutput, error) {
 			userID := GetUserID(ctx)
-			taskID, sourceIDs, err := youdaoService.ImportNotesBatch(userID, input.NotebookID, input.FileIDs)
+			// Agent 场景下没有笔记标题信息，传 nil 让后端降级使用 fileID 作为名称
+			taskID, sourceIDs, err := youdaoService.ImportNotesBatch(userID, input.NotebookID, input.FileIDs, nil)
 			if err != nil {
 				return nil, fmt.Errorf("批量导入失败: %w", err)
 			}

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"YoudaoNoteLm/internal/model/entity"
@@ -20,6 +21,7 @@ type youdaoService struct {
 	sourceRepo  repository.SourceRepository
 	embedding   EmbeddingService
 	cancelFuncs sync.Map // taskID -> context.CancelFunc
+	cookiesPath string   // youdaonote cookies 文件路径（用于 .note 格式转换）
 }
 
 // NewYoudaoService 创建有道云笔记服务
@@ -28,12 +30,14 @@ func NewYoudaoService(
 	bindingRepo repository.YoudaoBindingRepository,
 	sourceRepo repository.SourceRepository,
 	embedding EmbeddingService,
+	cookiesPath string,
 ) YoudaoService {
 	return &youdaoService{
 		cli:         cli,
 		bindingRepo: bindingRepo,
 		sourceRepo:  sourceRepo,
 		embedding:   embedding,
+		cookiesPath: cookiesPath,
 	}
 }
 
@@ -62,24 +66,13 @@ func (s *youdaoService) Bind(userID uint, apiKey string) error {
 		return fmt.Errorf("API Key 无效，请检查后重试")
 	}
 
-	// 3. 保存或更新绑定
-	existing, err := s.bindingRepo.FindByUserID(userID)
-	if err != nil {
-		return fmt.Errorf("查询绑定信息失败: %w", err)
-	}
-
-	if existing != nil {
-		existing.APIKey = apiKey
-		existing.Status = "active"
-		return s.bindingRepo.Update(existing)
-	}
-
+	// 3. 使用 Upsert 原子操作，避免并发冲突
 	binding := &entity.YoudaoBinding{
 		UserID: userID,
 		APIKey: apiKey,
 		Status: "active",
 	}
-	return s.bindingRepo.Create(binding)
+	return s.bindingRepo.Upsert(binding)
 }
 
 // Unbind 解绑有道账号
@@ -120,6 +113,40 @@ func (s *youdaoService) ImportNote(userID uint, notebookID uint, fileID string) 
 		return nil, fmt.Errorf("读取笔记内容失败: %w", err)
 	}
 
+	content := strings.TrimSpace(readResult.Content)
+
+	// .note 格式必须转换为 Markdown（向量化要求 Markdown 格式）
+	if readResult.RawFormat == "note" {
+		if s.cookiesPath == "" {
+			return nil, fmt.Errorf("笔记为 .note 格式，但未配置 cookies 文件路径，无法转换")
+		}
+		logger.Info("笔记为 .note 格式，开始转换为 Markdown", zap.String("file_id", fileID))
+		convertedContent, convertErr := s.cli.ConvertNote(fileID, s.cookiesPath)
+		if convertErr != nil {
+			return nil, fmt.Errorf(".note 格式转换失败: %w", convertErr)
+		}
+		if strings.TrimSpace(convertedContent) == "" {
+			return nil, fmt.Errorf(".note 格式转换后内容为空")
+		}
+		content = convertedContent
+		logger.Info(".note 格式转换成功", zap.String("file_id", fileID))
+	} else if content == "" && s.cookiesPath != "" {
+		// 非 .note 格式但内容为空，尝试转换（可能是格式识别错误）
+		logger.Info("内容为空，尝试使用 youdaonote-pull 转换", zap.String("file_id", fileID))
+		convertedContent, convertErr := s.cli.ConvertNote(fileID, s.cookiesPath)
+		if convertErr != nil {
+			logger.Warn("youdaonote-pull 转换失败", zap.String("file_id", fileID), zap.Error(convertErr))
+		} else if strings.TrimSpace(convertedContent) != "" {
+			content = convertedContent
+			logger.Info("youdaonote-pull 转换成功", zap.String("file_id", fileID))
+		}
+	}
+
+	// 检查内容是否为空
+	if content == "" {
+		return nil, fmt.Errorf("笔记内容为空或格式不支持")
+	}
+
 	// 2. 通过 list 获取笔记名称
 	noteName := fileID // 降级使用 fileID
 	items, listErr := s.cli.List(apiKey, "")
@@ -139,7 +166,7 @@ func (s *youdaoService) ImportNote(userID uint, notebookID uint, fileID string) 
 		Name:            noteName,
 		Type:            "youdao",
 		ExternalID:      fileID,
-		MarkdownContent: readResult.Content,
+		MarkdownContent: content,
 		Status:          "ready",
 	}
 
@@ -170,7 +197,7 @@ func (s *youdaoService) ImportNote(userID uint, notebookID uint, fileID string) 
 }
 
 // ImportNotesBatch 批量导入有道云笔记
-func (s *youdaoService) ImportNotesBatch(userID uint, notebookID uint, fileIDs []string) (string, []uint, error) {
+func (s *youdaoService) ImportNotesBatch(userID uint, notebookID uint, fileIDs []string, fileNames map[string]string) (string, []uint, error) {
 	apiKey, err := s.getAPIKey(userID)
 	if err != nil {
 		return "", nil, err
@@ -191,10 +218,16 @@ func (s *youdaoService) ImportNotesBatch(userID uint, notebookID uint, fileIDs [
 
 	// 为每个 fileID 创建 pending 状态的 Source
 	for _, fileID := range uniqueIDs {
+		// 优先使用前端传递的笔记标题，降级使用 fileID
+		noteName := fileID
+		if name, ok := fileNames[fileID]; ok && name != "" {
+			noteName = name
+		}
+
 		source := &entity.Source{
 			UserID:     userID,
 			NotebookID: notebookID,
-			Name:       fileID,
+			Name:       noteName,
 			Type:       "youdao",
 			ExternalID: fileID,
 			Status:     "pending",
@@ -301,6 +334,47 @@ func (s *youdaoService) processSingleNote(taskCtx context.Context, apiKey string
 		return
 	}
 
+	content := strings.TrimSpace(readResult.Content)
+
+	// .note 格式必须转换为 Markdown（向量化要求 Markdown 格式）
+	if readResult.RawFormat == "note" {
+		if s.cookiesPath == "" {
+			s.sourceRepo.UpdateStatus(sourceID, "failed", "笔记为 .note 格式，但未配置 cookies 文件路径")
+			return
+		}
+		logger.Info("笔记为 .note 格式，开始转换为 Markdown", zap.String("file_id", fileID))
+		convertedContent, convertErr := s.cli.ConvertNote(fileID, s.cookiesPath)
+		if convertErr != nil {
+			s.sourceRepo.UpdateStatus(sourceID, "failed", fmt.Sprintf(".note 格式转换失败: %v", convertErr))
+			return
+		}
+		if strings.TrimSpace(convertedContent) == "" {
+			s.sourceRepo.UpdateStatus(sourceID, "failed", ".note 格式转换后内容为空")
+			return
+		}
+		content = convertedContent
+		logger.Info(".note 格式转换成功", zap.String("file_id", fileID))
+	} else if content == "" && s.cookiesPath != "" {
+		// 非 .note 格式但内容为空，尝试转换（可能是格式识别错误）
+		logger.Info("内容为空，尝试使用 youdaonote-pull 转换", zap.String("file_id", fileID))
+		convertedContent, convertErr := s.cli.ConvertNote(fileID, s.cookiesPath)
+		if convertErr != nil {
+			logger.Warn("youdaonote-pull 转换失败", zap.String("file_id", fileID), zap.Error(convertErr))
+		} else if strings.TrimSpace(convertedContent) != "" {
+			content = convertedContent
+			logger.Info("youdaonote-pull 转换成功", zap.String("file_id", fileID))
+		}
+	}
+
+	// 检查内容是否为空
+	if content == "" {
+		if taskCtx.Err() != nil {
+			return
+		}
+		s.sourceRepo.UpdateStatus(sourceID, "failed", "笔记内容为空或格式不支持")
+		return
+	}
+
 	// 检查 Source 是否还存在
 	existing, _ := s.sourceRepo.FindByID(sourceID)
 	if existing == nil {
@@ -308,7 +382,7 @@ func (s *youdaoService) processSingleNote(taskCtx context.Context, apiKey string
 	}
 
 	// 更新内容和状态
-	existing.MarkdownContent = readResult.Content
+	existing.MarkdownContent = content
 	existing.Status = "ready"
 	if err := s.sourceRepo.Update(existing); err != nil {
 		s.sourceRepo.UpdateStatus(sourceID, "failed", fmt.Sprintf("保存失败: %v", err))
@@ -318,7 +392,7 @@ func (s *youdaoService) processSingleNote(taskCtx context.Context, apiKey string
 	// 异步向量化
 	if s.embedding != nil {
 		go func() {
-			if err := s.embedding.Vectorize(sourceID, readResult.Content); err != nil {
+			if err := s.embedding.Vectorize(sourceID, content); err != nil {
 				logger.Warn("有道笔记批量导入向量化失败", zap.Uint("source_id", sourceID), zap.Error(err))
 			} else {
 				s.sourceRepo.SetVectorized(sourceID)

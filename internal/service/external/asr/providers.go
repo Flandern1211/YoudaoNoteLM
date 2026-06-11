@@ -12,7 +12,7 @@ const ServiceType = "asr"
 func init() {
 	r := external.GetGlobalRegistry()
 
-	// 阿里云 NLS
+	// 阿里云 NLS（唯一支持的 ASR 服务商）
 	r.Register(ServiceType, "aliyun_nls", "阿里云智能语音",
 		[]string{"access_key_id", "access_key_secret", "app_key"}, nil,
 		func(cfg *external.ServiceConfig) (interface{}, error) {
@@ -32,18 +32,5 @@ func init() {
 			"access_key_id":     "Access Key ID",
 			"access_key_secret": "Access Key Secret",
 			"app_key":           "App Key",
-		})
-
-	// OpenAI Whisper
-	r.Register(ServiceType, "openai_whisper", "OpenAI Whisper",
-		[]string{"api_key"}, []string{"api_url"},
-		func(cfg *external.ServiceConfig) (interface{}, error) {
-			if cfg.APIKey == "" {
-				return nil, fmt.Errorf("OpenAI API Key 未配置")
-			}
-			return NewWhisperClient(cfg.APIURL, cfg.APIKey), nil
-		}, map[string]string{
-			"api_key": "API Key",
-			"api_url": "API 地址（可选，用于代理）",
 		})
 }

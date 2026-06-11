@@ -67,3 +67,5 @@ external:
     bucket: "youdaonotelm"
   youdao:
     cli_path: "youdaonote"  # CLI 路径，默认在 PATH 中查找，也可指定绝对路径
+    converter_script_path: ""  # youdaonote-pull 转换脚本路径（可选，用于 .note 格式转换）
+    cookies_path: ""  # youdaonote cookies 文件路径（可选，用于 .note 格式转换）

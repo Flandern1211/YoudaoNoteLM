@@ -63,6 +63,11 @@ const (
 
 	// 服务器错误 5xxxx
 	CodeInternalServiceError = 50001
+
+	// 配置健康检查错误 6xxxx
+	CodeConfigTestFailed  = 60001 // 配置连通性测试失败
+	CodeConfigTestTimeout = 60002 // 配置连通性测试超时
+	CodeConfigTestInvalid = 60003 // 配置参数无效
 )
 
 // 错误码对应的文本消息
@@ -96,20 +101,23 @@ var codeMessages = map[int]string{
 	CodeResourceAlreadyExists: "资源已存在",
 	CodeResourceLocked:        "资源已被锁定",
 
-	CodeUnsupportedFormat:      "不支持的文件格式",
-	CodeFileTooLarge:           "文件大小超限",
-	CodeFileParseFailed:        "文件解析失败",
-	CodeWebScrapeFailed:        "网页抓取失败",
-	CodeASTranscriptionFailed:  "音频转写失败",
-	CodeSearchQuotaExhausted:   "搜索API配额耗尽",
-	CodeInvalidYoudaoAPIKey:    "有道API Key无效",
-	CodeDuplicateImport:        "重复导入",
-	CodePreviewExpired:         "预览已过期",
-	CodeLLMNotConfigured:       "请先在设置中配置 LLM 服务",
-	CodeLLMCallFailed:          "LLM 服务调用失败",
-	CodeLLMResponseInvalid:     "LLM 返回结果格式异常",
-	CodeSearchAgentTimeout:     "搜索 Agent 执行超时",
-	CodeInternalServiceError:   "内部服务错误",
+	CodeUnsupportedFormat:     "不支持的文件格式",
+	CodeFileTooLarge:          "文件大小超限",
+	CodeFileParseFailed:       "文件解析失败",
+	CodeWebScrapeFailed:       "网页抓取失败",
+	CodeASTranscriptionFailed: "音频转写失败",
+	CodeSearchQuotaExhausted:  "搜索API配额耗尽",
+	CodeInvalidYoudaoAPIKey:   "有道API Key无效",
+	CodeDuplicateImport:       "重复导入",
+	CodePreviewExpired:        "预览已过期",
+	CodeLLMNotConfigured:      "请先在设置中配置 LLM 服务",
+	CodeLLMCallFailed:         "LLM 服务调用失败",
+	CodeLLMResponseInvalid:    "LLM 返回结果格式异常",
+	CodeSearchAgentTimeout:    "搜索 Agent 执行超时",
+	CodeInternalServiceError:  "内部服务错误",
+	CodeConfigTestFailed:      "配置连通性测试失败",
+	CodeConfigTestTimeout:     "配置连通性测试超时",
+	CodeConfigTestInvalid:     "配置参数无效",
 }
 
 // GetMessage 获取错误码对应的文本消息

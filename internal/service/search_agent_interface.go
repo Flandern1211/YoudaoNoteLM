@@ -32,6 +32,7 @@ type SearchAgentEvent struct {
 	ToolArgs     string `json:"tool_args,omitempty"`
 	SearchRounds int    `json:"search_rounds,omitempty"`
 	Error        string `json:"error,omitempty"`
+	ErrorCode    int    `json:"error_code,omitempty"` // 错误码，用于前端精确判断错误类型
 }
 
 // SearchAgentService 搜索 Agent 服务接口

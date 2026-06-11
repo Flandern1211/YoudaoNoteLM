@@ -26,15 +26,14 @@ func openaiCompatibleFactory(displayName string) external.FactoryFunc {
 func init() {
 	r := external.GetGlobalRegistry()
 
-	// ========== 基础模型（用户配置可选） ==========
-
-	// OpenAI
-	r.Register(ServiceType, "openai", "OpenAI",
+	// OpenAI（兼容所有 OpenAI API 格式的服务商，如 DeepSeek、智谱、通义、Kimi 等）
+	// 使用时修改 api_url 和 model 即可接入不同服务商
+	r.Register(ServiceType, "openai", "OpenAI（兼容）",
 		[]string{"api_key", "model"}, []string{"api_url"},
 		openaiCompatibleFactory("OpenAI"), map[string]string{
 			"api_key": "API Key",
-			"model":   "模型名称（如 gpt-4o）",
-			"api_url": "API 地址（可选，用于代理）",
+			"model":   "模型名称（如 gpt-4o、deepseek-chat、glm-4）",
+			"api_url": "API 地址（可选，默认 https://api.openai.com/v1）",
 		})
 
 	// Anthropic（Claude）
@@ -52,71 +51,6 @@ func init() {
 		}, map[string]string{
 			"api_key": "API Key",
 			"model":   "模型名称（如 claude-sonnet-4-20250514）",
-			"api_url": "API 地址（可选，用于代理）",
-		})
-
-	// ========== 兼容 OpenAI 的模型（系统配置可选） ==========
-
-	// DeepSeek
-	r.Register(ServiceType, "deepseek", "DeepSeek",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("DeepSeek"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 deepseek-chat）",
-			"api_url": "API 地址（默认 https://api.deepseek.com）",
-		})
-
-	// 智谱 AI（GLM）
-	r.Register(ServiceType, "zhipu", "智谱 AI",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("智谱 AI"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 glm-4）",
-			"api_url": "API 地址（默认 https://open.bigmodel.cn/api/paas/v4）",
-		})
-
-	// 通义千问
-	r.Register(ServiceType, "qwen", "通义千问",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("通义千问"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 qwen-turbo）",
-			"api_url": "API 地址（默认 https://dashscope.aliyuncs.com/compatible-mode/v1）",
-		})
-
-	// 百川智能
-	r.Register(ServiceType, "baichuan", "百川智能",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("百川智能"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 Baichuan4）",
-			"api_url": "API 地址（默认 https://api.baichuan-ai.com/v1）",
-		})
-
-	// 月之暗面（Kimi）
-	r.Register(ServiceType, "moonshot", "月之暗面（Kimi）",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("月之暗面"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 moonshot-v1-8k）",
-			"api_url": "API 地址（默认 https://api.moonshot.cn/v1）",
-		})
-
-	// MiniMax
-	r.Register(ServiceType, "minimax", "MiniMax",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("MiniMax"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 abab6.5-chat）",
-			"api_url": "API 地址（默认 https://api.minimax.chat/v1）",
-		})
-
-	// 火山引擎（豆包）
-	r.Register(ServiceType, "volcengine", "火山引擎（豆包）",
-		[]string{"api_key", "model"}, []string{"api_url"},
-		openaiCompatibleFactory("火山引擎"), map[string]string{
-			"api_key": "API Key",
-			"model":   "模型名称（如 doubao-pro-4k）",
-			"api_url": "API 地址（默认 https://ark.cn-beijing.volces.com/api/v3）",
+			"api_url": "API 地址（可选，默认 https://api.anthropic.com）",
 		})
 }

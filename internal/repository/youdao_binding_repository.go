@@ -31,6 +31,13 @@ func (r *youdaoBindingRepository) Create(binding *entity.YoudaoBinding) error {
 	return r.db.Create(binding).Error
 }
 
+// Upsert 创建或更新绑定（原子操作，避免并发冲突）
+func (r *youdaoBindingRepository) Upsert(binding *entity.YoudaoBinding) error {
+	return r.db.Where(entity.YoudaoBinding{UserID: binding.UserID}).
+		Assign(entity.YoudaoBinding{APIKey: binding.APIKey, Status: binding.Status}).
+		FirstOrCreate(binding).Error
+}
+
 func (r *youdaoBindingRepository) Update(binding *entity.YoudaoBinding) error {
 	return r.db.Save(binding).Error
 }

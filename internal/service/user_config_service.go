@@ -14,13 +14,15 @@ import (
 
 type userConfigService struct {
 	configRepo repository.UserConfigRepository
-	configSvc  ConfigService // 配置路由服务，用于获取系统配置
+	configSvc  ConfigService        // 配置路由服务，用于获取系统配置
+	healthChk  *ConfigHealthChecker // 配置健康检查器
 }
 
 func NewUserConfigService(configRepo repository.UserConfigRepository, configSvc ConfigService) UserConfigService {
 	return &userConfigService{
 		configRepo: configRepo,
 		configSvc:  configSvc,
+		healthChk:  NewConfigHealthChecker(),
 	}
 }
 
@@ -364,4 +366,9 @@ func (s *userConfigService) GetActiveConfig(userID uint, configType string) (*en
 
 	// 3. 没有配置
 	return nil, nil
+}
+
+// TestConfig 测试配置连通性（保存前验证）
+func (s *userConfigService) TestConfig(configType string, config *entity.UserConfig) *HealthCheckResult {
+	return s.healthChk.TestConfig(configType, config)
 }

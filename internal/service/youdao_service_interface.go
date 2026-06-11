@@ -6,6 +6,8 @@ import (
 )
 
 // YoudaoService 有道云笔记服务接口
+
+// YoudaoService 有道云笔记服务接口
 type YoudaoService interface {
 	// 绑定管理
 	Bind(userID uint, apiKey string) error
@@ -17,5 +19,5 @@ type YoudaoService interface {
 
 	// 导入
 	ImportNote(userID uint, notebookID uint, fileID string) (*entity.Source, error)
-	ImportNotesBatch(userID uint, notebookID uint, fileIDs []string) (taskID string, sourceIDs []uint, err error)
+	ImportNotesBatch(userID uint, notebookID uint, fileIDs []string, fileNames map[string]string) (taskID string, sourceIDs []uint, err error)
 }

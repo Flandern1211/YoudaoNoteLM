@@ -60,13 +60,19 @@ func (ctrl *Controller) GetBinding(c *gin.Context) {
 	}
 
 	if binding == nil {
-		response.Success(c, gin.H{"bound": false})
+		response.Success(c, gin.H{
+			"bound":   false,
+			"user_id": userID,
+			"debug":   "binding is nil",
+		})
 		return
 	}
 
 	response.Success(c, gin.H{
-		"bound":  binding.Status == "active",
-		"status": binding.Status,
+		"bound":    binding.Status == "active",
+		"status":   binding.Status,
+		"user_id":  binding.UserID,
+		"has_key":  binding.APIKey != "",
 	})
 }
 
@@ -113,7 +119,7 @@ func (ctrl *Controller) ImportBatch(c *gin.Context) {
 		return
 	}
 
-	taskID, sourceIDs, err := ctrl.youdaoService.ImportNotesBatch(userID, req.NotebookID, req.FileIDs)
+	taskID, sourceIDs, err := ctrl.youdaoService.ImportNotesBatch(userID, req.NotebookID, req.FileIDs, req.FileNames)
 	if err != nil {
 		response.BizError(c, err)
 		return

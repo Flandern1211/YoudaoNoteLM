@@ -147,6 +147,10 @@ func (a *SearchAgent) Execute(ctx context.Context, userID, notebookID uint, task
 
 	agent, err := a.createAgent(ctx, userID)
 	if err != nil {
+		logger.Error("创建搜索 Agent 失败",
+			zap.Uint("user_id", userID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
@@ -237,7 +241,17 @@ func (a *SearchAgent) ExecuteStream(ctx context.Context, userID, notebookID uint
 
 		agent, err := a.createAgent(ctx, userID)
 		if err != nil {
-			eventCh <- &service.SearchAgentEvent{Type: "error", Error: err.Error()}
+			logger.Error("创建搜索 Agent 失败",
+				zap.Uint("user_id", userID),
+				zap.Error(err),
+			)
+			// 如果是业务错误，提取错误码
+			event := &service.SearchAgentEvent{Type: "error", Error: err.Error()}
+			if bizErr, ok := err.(*bizerrors.BizError); ok {
+				event.ErrorCode = bizErr.Code
+				event.Error = bizErr.Message // 使用友好的错误消息，而不是包含错误码的完整信息
+			}
+			eventCh <- event
 			return
 		}
 
@@ -334,6 +348,10 @@ func (a *SearchAgent) ExecuteWithImport(ctx context.Context, userID, notebookID 
 
 	agent, err := a.createAgentWithImport(ctx, userID)
 	if err != nil {
+		logger.Error("创建搜索导入 Agent 失败",
+			zap.Uint("user_id", userID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
