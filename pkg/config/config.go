@@ -34,6 +34,7 @@ type BochaConfig struct {
 	MaxCount        int    `mapstructure:"max_count"`
 }
 
+// MilvusConfig Milvus 向量数据库配
 // MilvusConfig Milvus 向量数据库配置
 type MilvusConfig struct {
 	Address  string `mapstructure:"address"`

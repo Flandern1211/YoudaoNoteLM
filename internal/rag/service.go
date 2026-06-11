@@ -1,4 +1,4 @@
-package ingestion
+package rag
 
 import (
 	"context"
@@ -172,7 +172,14 @@ func (s *ingestionService) IngestSingle(ctx context.Context, sourceID uint) erro
 	}
 	logger.Info("Embedding 全部完成", zap.Uint("source_id", sourceID), zap.Int("vector_count", len(vectors)))
 
-	// 8. 确保用户的 Milvus Collection 存在
+	// 8.5 生成 sparse vector
+	sparseVectors := make([]map[int32]float32, len(enhancedDocs))
+	for i, doc := range enhancedDocs {
+		sparseVectors[i] = GenerateSparseVector(doc.Content)
+	}
+	logger.Info("Sparse vector 生成完成", zap.Uint("source_id", sourceID), zap.Int("count", len(sparseVectors)))
+
+	// 9. 确保用户的 Milvus Collection 存在
 	if err := s.milvusWriter.EnsureCollection(ctx, source.UserID); err != nil {
 		errMsg := "确保 Milvus Collection 失败: " + err.Error()
 		logger.Error(errMsg, zap.Uint("source_id", sourceID), zap.Uint("user_id", source.UserID))
@@ -183,7 +190,7 @@ func (s *ingestionService) IngestSingle(ctx context.Context, sourceID uint) erro
 	// 9. 写入 Milvus
 	logger.Info("写入 Milvus", zap.Uint("source_id", sourceID), zap.Uint("user_id", source.UserID), zap.Int("doc_count", len(enhancedDocs)))
 	if err := s.retry(func() error {
-		return s.milvusWriter.Store(ctx, source.UserID, enhancedDocs, vectors)
+		return s.milvusWriter.StoreWithSparse(ctx, source.UserID, enhancedDocs, vectors, sparseVectors)
 	}); err != nil {
 		errMsg := "写入 Milvus 失败: " + err.Error()
 		logger.Error(errMsg, zap.Uint("source_id", sourceID))

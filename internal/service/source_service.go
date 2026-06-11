@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"YoudaoNoteLm/internal/ingestion"
+	"YoudaoNoteLm/internal/rag"
 	"YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
@@ -15,10 +15,10 @@ import (
 
 type sourceService struct {
 	sourceRepo   repository.SourceRepository
-	ingestionSvc ingestion.IngestionService
+	ingestionSvc rag.IngestionService
 }
 
-func NewSourceService(sourceRepo repository.SourceRepository, ingestionSvc ingestion.IngestionService) SourceService {
+func NewSourceService(sourceRepo repository.SourceRepository, ingestionSvc rag.IngestionService) SourceService {
 	return &sourceService{
 		sourceRepo:   sourceRepo,
 		ingestionSvc: ingestionSvc,

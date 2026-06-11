@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"YoudaoNoteLm/internal/ingestion"
+	"YoudaoNoteLm/internal/rag"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external"
@@ -41,7 +41,7 @@ type importerService struct {
 	sourceRepo   repository.SourceRepository
 	importCache  *cache.ImportTaskCache
 	previewCache *cache.AudioPreviewCache
-	ingestionSvc ingestion.IngestionService
+	ingestionSvc rag.IngestionService
 }
 
 // NewImporterService 创建导入服务
@@ -52,7 +52,7 @@ func NewImporterService(
 	sourceRepo repository.SourceRepository,
 	importCache *cache.ImportTaskCache,
 	previewCache *cache.AudioPreviewCache,
-	ingestionSvc ingestion.IngestionService,
+	ingestionSvc rag.IngestionService,
 ) ImporterService {
 	return &importerService{
 		markitdown:   markitdown,
