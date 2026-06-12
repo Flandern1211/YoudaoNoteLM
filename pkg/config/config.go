@@ -20,6 +20,21 @@ type ExternalConfig struct {
 	MinIO      MinIOConfig      `mapstructure:"minio"`
 	Milvus     MilvusConfig     `mapstructure:"milvus"`
 	Bocha      BochaConfig      `mapstructure:"bocha"`
+	LLM        LLMConfig        `mapstructure:"llm"`
+}
+
+// LLMConfig configures the main chat model used by generation agents.
+// Vector embeddings remain configured separately via user_config type "embedding".
+type LLMConfig struct {
+	Enabled        bool    `mapstructure:"enabled"`
+	Provider       string  `mapstructure:"provider"`
+	BaseURL        string  `mapstructure:"base_url"`
+	APIKey         string  `mapstructure:"api_key"`
+	Model          string  `mapstructure:"model"`
+	TimeoutSeconds int     `mapstructure:"timeout_seconds"`
+	MaxTokens      int     `mapstructure:"max_tokens"`
+	Temperature    float32 `mapstructure:"temperature"`
+	TopP           float32 `mapstructure:"top_p"`
 }
 
 // BochaConfig 博查联网搜索配置

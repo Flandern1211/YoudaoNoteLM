@@ -27,6 +27,17 @@ jwt:
   issuer: "mindtrace"
 
 external:
+  # Main chat model for generation agents. This is separate from vector embeddings.
+  llm:
+    enabled: false
+    provider: "doubao"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    api_key: ""
+    model: "ep-your-chat-endpoint"
+    timeout_seconds: 60
+    max_tokens: 4096
+    temperature: 0.3
+    top_p: 0.8
   markitdown:
     url: "http://localhost:8085"
   asr:
@@ -44,6 +55,8 @@ external:
     address: "localhost:19530"
     username: ""
     password: ""
+  # Vector embedding model is configured per user in user_config with config_type=embedding.
+  # It is not read from external.llm.
   bocha:
     base_url: "https://api.bochaai.com"
     endpoint: "/v1/web-search"
