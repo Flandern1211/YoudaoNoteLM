@@ -4,6 +4,7 @@ import * as notebookApi from '../api/notebook';
 import * as sourceApi from '../api/source';
 import * as importApi from '../api/import';
 import * as searchApi from '../api/search';
+import * as chatApi from '../api/chat';
 import { getErrorMessage } from '../utils/error';
 
 interface NotebookState {
@@ -61,10 +62,11 @@ interface NotebookState {
   importFromURL: (notebookId: string, url: string) => Promise<{ taskId: string; sourceId: number }>;
   importSearchResults: (notebookId: string, items: searchApi.SearchImportItem[]) => Promise<{ taskId: string; sourceIds: number[] }>;
 
-  // Conversation actions (local)
-  createConversation: (notebookId: string) => void;
+  // Conversation actions (API-backed)
+  fetchConversations: (notebookId: string) => Promise<void>;
+  createConversation: (notebookId: string) => Promise<string | null>;
   setCurrentConversation: (id: string) => void;
-  deleteConversation: (notebookId: string, conversationId: string) => void;
+  deleteConversation: (notebookId: string, conversationId: string) => Promise<void>;
   addMessage: (notebookId: string, conversationId: string, message: any) => void;
 
   // Note actions (local)
@@ -150,13 +152,15 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   },
 
   setCurrentNotebook: async (id) => {
-    const notebook = get().notebooks.find((n) => n.id === id);
     set({
       currentNotebookId: id,
-      currentConversationId: notebook?.conversations[0]?.id ?? null,
+      currentConversationId: null,
     });
-    // Auto-fetch sources for this notebook and wait for completion
-    await get().fetchSources(id);
+    // 并行加载 sources 和 conversations
+    await Promise.all([
+      get().fetchSources(id),
+      get().fetchConversations(id),
+    ]);
   },
 
   createNotebook: async (name) => {
@@ -727,43 +731,85 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     return { taskId, sourceIds };
   },
 
-  // ---- Local actions (not synced with API yet) ----
+  // ---- Conversation actions (API-backed) ----
 
-  createConversation: (notebookId) => {
-    const newConv: Conversation = {
-      id: `conv-${Date.now()}`,
-      title: '新对话',
-      messages: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      notebooks: state.notebooks.map((n) =>
-        n.id === notebookId
-          ? { ...n, conversations: [newConv, ...n.conversations] }
-          : n
-      ),
-      currentConversationId: newConv.id,
-    }));
+  fetchConversations: async (notebookId) => {
+    try {
+      const res = await chatApi.listConversations(Number(notebookId));
+      if (res.code === 0) {
+        const conversations: Conversation[] = res.data.map((c) => ({
+          id: String(c.id),
+          title: c.title,
+          messages: [],
+          createdAt: c.created_at,
+          updatedAt: c.updated_at,
+        }));
+        set((state) => ({
+          notebooks: state.notebooks.map((n) =>
+            n.id === notebookId ? { ...n, conversations } : n
+          ),
+          // 如果当前没有选中对话，自动选中第一个
+          currentConversationId: get().currentConversationId || conversations[0]?.id || null,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch conversations:', err);
+    }
+  },
+
+  createConversation: async (notebookId) => {
+    try {
+      const res = await chatApi.createConversation({
+        notebook_id: Number(notebookId),
+      });
+      if (res.code === 0) {
+        const newConv: Conversation = {
+          id: String(res.data.id),
+          title: '新对话',
+          messages: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          notebooks: state.notebooks.map((n) =>
+            n.id === notebookId
+              ? { ...n, conversations: [newConv, ...n.conversations] }
+              : n
+          ),
+          currentConversationId: newConv.id,
+        }));
+        return newConv.id;
+      }
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
+    }
+    return null;
   },
 
   setCurrentConversation: (id) => set({ currentConversationId: id }),
 
-  deleteConversation: (notebookId, conversationId) => {
-    set((state) => {
-      const notebook = state.notebooks.find((n) => n.id === notebookId);
-      if (!notebook) return state;
-      const filtered = notebook.conversations.filter((c) => c.id !== conversationId);
-      return {
-        notebooks: state.notebooks.map((n) =>
-          n.id === notebookId ? { ...n, conversations: filtered } : n
-        ),
-        currentConversationId:
-          state.currentConversationId === conversationId
-            ? (filtered[0]?.id ?? null)
-            : state.currentConversationId,
-      };
-    });
+  deleteConversation: async (notebookId, conversationId) => {
+    try {
+      const res = await chatApi.deleteConversation(Number(conversationId));
+      if (res.code === 0) {
+        set((state) => {
+          const notebook = state.notebooks.find((n) => n.id === notebookId);
+          if (!notebook) return state;
+          const filtered = notebook.conversations.filter((c) => c.id !== conversationId);
+          return {
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId ? { ...n, conversations: filtered } : n
+            ),
+            currentConversationId:
+              state.currentConversationId === conversationId
+                ? (filtered[0]?.id ?? null)
+                : state.currentConversationId,
+          };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+    }
   },
 
   addMessage: (notebookId, conversationId, message) => {

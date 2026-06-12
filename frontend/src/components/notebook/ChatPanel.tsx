@@ -5,13 +5,15 @@ import {
   ChevronDown, Sparkles, Edit3
 } from 'lucide-react';
 import { useNotebookStore } from '../../stores/useNotebookStore';
+import * as chatApi from '../../api/chat';
 import { cn } from '../../utils/cn';
 import type { ChatMessage, NoteType } from '../../types';
 
 export default function ChatPanel() {
   const {
     currentNotebookId, getCurrentNotebook, getCurrentConversation,
-    createConversation, setCurrentConversation, deleteConversation, addMessage, addNote
+    createConversation, setCurrentConversation, deleteConversation, addMessage, addNote,
+    fetchConversations
   } = useNotebookStore();
 
   const notebook = getCurrentNotebook();
@@ -24,6 +26,15 @@ export default function ChatPanel() {
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editConvTitle, setEditConvTitle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamingContentRef = useRef('');
+
+  // 初始加载对话列表
+  useEffect(() => {
+    if (currentNotebookId) {
+      fetchConversations(currentNotebookId);
+    }
+  }, [currentNotebookId, fetchConversations]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,67 +47,100 @@ export default function ChatPanel() {
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
 
+    const userContent = input.trim();
+
+    // 确保有对话
+    let convId = conversation?.id;
+    if (!convId) {
+      const newId = await createConversation(currentNotebookId);
+      if (!newId) return;
+      convId = newId;
+    }
+
+    // 添加用户消息到 UI
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: userContent,
       timestamp: new Date().toISOString(),
     };
-
-    let convId = conversation?.id;
-    if (!convId) {
-      createConversation(currentNotebookId);
-      const updated = useNotebookStore.getState().getCurrentNotebook();
-      convId = updated?.conversations[0]?.id;
-    }
-
-    if (!convId) return;
     addMessage(currentNotebookId, convId, userMsg);
     setInput('');
     setIsStreaming(true);
     setStreamingText('');
 
-    const hasSources = selectedSources.length > 0;
-    const responseText = hasSources
-      ? `根据您选中的 ${selectedSources.length} 份资料，我来回答您的问题：
+    // 创建 AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    streamingContentRef.current = '';
 
-**关于 "${input.trim().slice(0, 15)}..."**
+    try {
+      await chatApi.sendMessage(
+        Number(convId),
+        {
+          content: userContent,
+          source_ids: selectedSources.map((s) => Number(s.id)),
+        },
+        (event) => {
+          switch (event.type) {
+            case 'token':
+              if (event.content) {
+                streamingContentRef.current += event.content;
+                setStreamingText(streamingContentRef.current);
+              }
+              break;
+            case 'error':
+              if (event.content) {
+                streamingContentRef.current += `\n\n❌ ${event.content}`;
+                setStreamingText(streamingContentRef.current);
+              }
+              break;
+            case 'done':
+              break;
+          }
+        },
+        controller.signal,
+      );
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error('Chat stream error:', err);
+        if (!streamingContentRef.current) {
+          streamingContentRef.current = '❌ 发送失败，请重试';
+          setStreamingText(streamingContentRef.current);
+        }
+      }
+    } finally {
+      // 将流式文本转为正式消息
+      const finalText = streamingContentRef.current;
+      if (finalText) {
+        const assistantMsg: ChatMessage = {
+          id: `msg-${Date.now() + 1}`,
+          role: 'assistant',
+          content: finalText,
+          timestamp: new Date().toISOString(),
+          citations: selectedSources.length > 0 ? selectedSources.map((s) => s.id) : undefined,
+        };
+        addMessage(currentNotebookId, convId, assistantMsg);
+      }
 
-这是一个模拟的 AI 流式回复示例。在实际应用中，这里会连接后端的 Agent 系统，基于您的资料来源进行语义检索和智能回答。
-
-主要特点：
-1. **语义检索**：从选中的资料中找到最相关的内容
-2. **智能生成**：基于检索结果生成自然语言回答
-3. **引用标注**：每个关键观点都标注了来源
-
-> 以上内容基于 ${selectedSources.map((s) => s.name).join('、')} 等资料生成。`
-      : `好的，我来回答您的问题：
-
-**关于 "${input.trim().slice(0, 15)}..."**
-
-这是一个模拟的 AI 回复。在实际应用中，您可以先在左侧选择资料来源，AI 会基于资料内容进行更精准的回答。
-
-如果您想获得更准确的回答，建议：
-1. 在左侧导入相关资料
-2. 勾选需要参考的资料来源
-3. 再次提问，AI 将基于资料内容回答`;
-
-    for (let i = 0; i < responseText.length; i++) {
-      await new Promise((r) => setTimeout(r, 15 + Math.random() * 25));
-      setStreamingText(responseText.slice(0, i + 1));
+      setIsStreaming(false);
+      setStreamingText('');
+      streamingContentRef.current = '';
+      abortControllerRef.current = null;
     }
+  };
 
-    const assistantMsg: ChatMessage = {
-      id: `msg-${Date.now() + 1}`,
-      role: 'assistant',
-      content: responseText,
-      timestamp: new Date().toISOString(),
-      citations: hasSources ? selectedSources.map((s) => s.id) : undefined,
-    };
-
-    addMessage(currentNotebookId, convId, assistantMsg);
-    setIsStreaming(false);
-    setStreamingText('');
+  const handleStop = async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (conversation?.id) {
+      try {
+        await chatApi.stopGeneration(Number(conversation.id));
+      } catch {
+        // 忽略
+      }
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,31 +169,25 @@ export default function ChatPanel() {
     setEditConvTitle(title);
   };
 
-  // We need a renameConversation method, but for now we can use addMessage trick
-  // Actually let's just update the title via the store directly
-  const handleFinishRenameConv = () => {
+  const handleFinishRenameConv = async () => {
     if (editingConvId && editConvTitle.trim()) {
-      // Directly update the conversation title in the store
-      const state = useNotebookStore.getState();
-      const nb = state.notebooks.find(n => n.id === currentNotebookId);
-      if (nb) {
-        const conv = nb.conversations.find(c => c.id === editingConvId);
-        if (conv) {
-          // We'll just use a workaround - update via the notebook store
-          // For now, let's do it inline
-          useNotebookStore.setState((s) => ({
-            notebooks: s.notebooks.map(n =>
-              n.id === currentNotebookId
-                ? {
-                    ...n,
-                    conversations: n.conversations.map(c =>
-                      c.id === editingConvId ? { ...c, title: editConvTitle.trim() } : c
-                    ),
-                  }
-                : n
-            ),
-          }));
-        }
+      try {
+        await chatApi.updateConversation(Number(editingConvId), editConvTitle.trim());
+        // 更新本地状态
+        useNotebookStore.setState((s) => ({
+          notebooks: s.notebooks.map(n =>
+            n.id === currentNotebookId
+              ? {
+                  ...n,
+                  conversations: n.conversations.map(c =>
+                    c.id === editingConvId ? { ...c, title: editConvTitle.trim() } : c
+                  ),
+                }
+              : n
+          ),
+        }));
+      } catch (err) {
+        console.error('Failed to rename conversation:', err);
       }
     }
     setEditingConvId(null);
@@ -393,18 +431,28 @@ export default function ChatPanel() {
                 </span>
               )}
             </div>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-              className={cn(
-                'p-2 rounded-lg transition-all cursor-pointer',
-                input.trim() && !isStreaming
-                  ? 'bg-accent text-white hover:bg-accent-light shadow-md shadow-accent/30'
-                  : 'bg-bg-hover text-text-muted cursor-not-allowed'
+            <div className="flex items-center gap-1.5">
+              {isStreaming && (
+                <button
+                  onClick={handleStop}
+                  className="px-2 py-1 rounded-lg text-xs bg-error/10 text-error hover:bg-error/20 transition-colors cursor-pointer"
+                >
+                  停止
+                </button>
               )}
-            >
-              <Send size={16} />
-            </button>
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isStreaming}
+                className={cn(
+                  'p-2 rounded-lg transition-all cursor-pointer',
+                  input.trim() && !isStreaming
+                    ? 'bg-accent text-white hover:bg-accent-light shadow-md shadow-accent/30'
+                    : 'bg-bg-hover text-text-muted cursor-not-allowed'
+                )}
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -5,11 +5,6 @@ import (
 	"mime/multipart"
 )
 
-// EmbeddingService 向量化服务接口（外部模块实现）
-type EmbeddingService interface {
-	Vectorize(sourceID uint, content string) error
-}
-
 // SearchResultItem 搜索结果项（用于导入时保留标题）
 type SearchResultItem struct {
 	Title string // 标题

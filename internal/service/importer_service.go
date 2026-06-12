@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"YoudaoNoteLm/internal/model/entity"
+	"YoudaoNoteLm/internal/rag"
 	"YoudaoNoteLm/internal/repository"
 	"YoudaoNoteLm/internal/service/external/asr"
 	externalMarkitdown "YoudaoNoteLm/internal/service/external/markitdown"
@@ -44,7 +45,7 @@ type importerService struct {
 	sourceRepo   repository.SourceRepository
 	importCache  *cache.ImportTaskCache
 	previewCache *cache.AudioPreviewCache
-	embedding    EmbeddingService
+	ingestionSvc rag.IngestionService
 	cancelFuncs  sync.Map // taskID -> context.CancelFunc，用于中止运行中的任务
 }
 
@@ -56,7 +57,7 @@ func NewImporterService(
 	sourceRepo repository.SourceRepository,
 	importCache *cache.ImportTaskCache,
 	previewCache *cache.AudioPreviewCache,
-	embedding EmbeddingService,
+	ingestionSvc rag.IngestionService,
 ) ImporterService {
 	return &importerService{
 		markitdown:   markitdown,
@@ -65,7 +66,7 @@ func NewImporterService(
 		sourceRepo:   sourceRepo,
 		importCache:  importCache,
 		previewCache: previewCache,
-		embedding:    embedding,
+		ingestionSvc: ingestionSvc,
 	}
 }
 
@@ -129,17 +130,11 @@ func (s *importerService) ImportFile(userID, notebookID uint, file *multipart.Fi
 		return nil, err
 	}
 
-	// 异步向量化
-	if s.embedding != nil {
-		go func() {
-			if err := s.embedding.Vectorize(source.ID, markdown); err != nil {
-				logger.Warn("向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
-			} else {
-				if err := s.sourceRepo.SetVectorized(source.ID); err != nil {
-					logger.Warn("标记向量化状态失败", zap.Uint("source_id", source.ID), zap.Error(err))
-				}
-			}
-		}()
+	// 同步触发 RAG 入库
+	if s.ingestionSvc != nil {
+		if err := s.ingestionSvc.IngestSingle(context.Background(), source.ID); err != nil {
+			return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "RAG 入库失败", err)
+		}
 	}
 
 	return source, nil
@@ -316,21 +311,15 @@ func (s *importerService) ConfirmAudio(userID uint, previewID string, editedCont
 		return nil, err
 	}
 
-	if err := s.previewCache.UpdateStatus(ctx, previewID, "confirmed"); err != nil {
-		logger.Warn("更新预览状态失败", zap.String("preview_id", previewID), zap.Error(err))
+	// 同步触发 RAG 入库
+	if s.ingestionSvc != nil {
+		if err := s.ingestionSvc.IngestSingle(context.Background(), source.ID); err != nil {
+			return nil, bizerrors.NewWithErr(bizerrors.CodeInternalServiceError, "RAG 入库失败", err)
+		}
 	}
 
-	// 异步向量化
-	if s.embedding != nil {
-		go func() {
-			if err := s.embedding.Vectorize(source.ID, content); err != nil {
-				logger.Warn("音频向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
-			} else {
-				if err := s.sourceRepo.SetVectorized(source.ID); err != nil {
-					logger.Warn("标记向量化状态失败", zap.Uint("source_id", source.ID), zap.Error(err))
-				}
-			}
-		}()
+	if err := s.previewCache.UpdateStatus(ctx, previewID, "confirmed"); err != nil {
+		logger.Warn("更新预览状态失败", zap.String("preview_id", previewID), zap.Error(err))
 	}
 
 	return source, nil
@@ -548,17 +537,15 @@ func (s *importerService) processSingleSource(taskCtx context.Context, sourceID 
 		return
 	}
 
-	// 异步向量化
-	if s.embedding != nil {
-		go func(srcID uint, content string) {
-			if err := s.embedding.Vectorize(srcID, content); err != nil {
-				logger.Warn("向量化失败", zap.Uint("source_id", srcID), zap.Error(err))
-			} else {
-				if err := s.sourceRepo.SetVectorized(srcID); err != nil {
-					logger.Warn("标记向量化状态失败", zap.Uint("source_id", srcID), zap.Error(err))
-				}
+	// 同步触发 RAG 入库
+	if s.ingestionSvc != nil {
+		if err := s.ingestionSvc.IngestSingle(taskCtx, sourceID); err != nil {
+			logger.Error("RAG 入库失败", zap.Uint("source_id", sourceID), zap.Error(err))
+			if updateErr := s.sourceRepo.UpdateStatus(sourceID, "failed", fmt.Sprintf("RAG 入库失败: %v", err)); updateErr != nil {
+				logger.Warn("更新Source状态为failed失败", zap.Uint("source_id", sourceID), zap.Error(updateErr))
 			}
-		}(sourceID, markdown)
+			return
+		}
 	}
 
 	logger.Info("Source导入成功", zap.Uint("source_id", sourceID), zap.String("url", source.OriginalURL))

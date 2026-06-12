@@ -11,7 +11,7 @@ import (
 	"YoudaoNoteLm/internal/api/v1/search"
 	"YoudaoNoteLm/internal/api/v1/source"
 	"YoudaoNoteLm/internal/api/v1/user"
-	"YoudaoNoteLm/internal/api/v1/user_config"
+	userconfig "YoudaoNoteLm/internal/api/v1/user_config"
 	youdao "YoudaoNoteLm/internal/api/v1/youdao"
 	"YoudaoNoteLm/internal/middleware"
 	"YoudaoNoteLm/internal/service"
@@ -33,6 +33,7 @@ type Router struct {
 	searchCtrl     *search.Controller
 	providerCtrl   *providers.Controller
 	youdaoCtrl     *youdao.Controller
+	userConfigCtrl *userconfig.Controller
 }
 
 // NewRouter 创建路由。
@@ -66,6 +67,7 @@ func NewRouter(
 		adminCtrl:      admin.NewController(adminService),
 		providerCtrl:   providers.NewController(configService),
 		youdaoCtrl:     youdao.NewController(youdaoService),
+		userConfigCtrl: userconfig.NewController(userConfigService, tokenBlacklist),
 	}
 }
 
@@ -97,11 +99,11 @@ func (r *Router) Setup(engine *gin.Engine) {
 		r.importCtrl.RegisterRoutes(v1, r.tokenBlacklist)
 		r.chatCtrl.RegisterRoutes(v1, r.tokenBlacklist)
 
+		// 用户配置路由（需认证）
+		r.userConfigCtrl.RegisterRoutes(v1)
+
 		// 后台管理路由（需认证）
 		r.adminCtrl.RegisterRoutes(v1)
-
-		// 搜索路由（需认证）
-		r.searchCtrl.RegisterRoutes(v1)
 
 		// 有道云笔记路由（需认证）
 		r.youdaoCtrl.RegisterRoutes(v1, r.tokenBlacklist)

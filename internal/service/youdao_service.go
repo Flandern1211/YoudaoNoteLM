@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"YoudaoNoteLm/internal/model/entity"
+	"YoudaoNoteLm/internal/rag"
 	"YoudaoNoteLm/internal/repository"
 	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
 	"YoudaoNoteLm/pkg/logger"
@@ -16,12 +17,12 @@ import (
 )
 
 type youdaoService struct {
-	cli         externalYoudao.CLI
-	bindingRepo repository.YoudaoBindingRepository
-	sourceRepo  repository.SourceRepository
-	embedding   EmbeddingService
-	cancelFuncs sync.Map // taskID -> context.CancelFunc
-	cookiesPath string   // youdaonote cookies 文件路径（用于 .note 格式转换）
+	cli          externalYoudao.CLI
+	bindingRepo  repository.YoudaoBindingRepository
+	sourceRepo   repository.SourceRepository
+	ingestionSvc rag.IngestionService
+	cancelFuncs  sync.Map // taskID -> context.CancelFunc
+	cookiesPath  string   // youdaonote cookies 文件路径（用于 .note 格式转换）
 }
 
 // NewYoudaoService 创建有道云笔记服务
@@ -29,15 +30,15 @@ func NewYoudaoService(
 	cli externalYoudao.CLI,
 	bindingRepo repository.YoudaoBindingRepository,
 	sourceRepo repository.SourceRepository,
-	embedding EmbeddingService,
+	ingestionSvc rag.IngestionService,
 	cookiesPath string,
 ) YoudaoService {
 	return &youdaoService{
-		cli:         cli,
-		bindingRepo: bindingRepo,
-		sourceRepo:  sourceRepo,
-		embedding:   embedding,
-		cookiesPath: cookiesPath,
+		cli:          cli,
+		bindingRepo:  bindingRepo,
+		sourceRepo:   sourceRepo,
+		ingestionSvc: ingestionSvc,
+		cookiesPath:  cookiesPath,
 	}
 }
 
@@ -174,17 +175,11 @@ func (s *youdaoService) ImportNote(userID uint, notebookID uint, fileID string) 
 		return nil, fmt.Errorf("创建 Source 记录失败: %w", err)
 	}
 
-	// 4. 异步向量化
-	if s.embedding != nil {
-		go func() {
-			if err := s.embedding.Vectorize(source.ID, content); err != nil {
-				logger.Warn("有道笔记向量化失败", zap.Uint("source_id", source.ID), zap.Error(err))
-			} else {
-				if err := s.sourceRepo.SetVectorized(source.ID); err != nil {
-					logger.Warn("标记向量化状态失败", zap.Uint("source_id", source.ID), zap.Error(err))
-				}
-			}
-		}()
+	// 4. 同步触发 RAG 入库
+	if s.ingestionSvc != nil {
+		if err := s.ingestionSvc.IngestSingle(context.Background(), source.ID); err != nil {
+			return nil, fmt.Errorf("RAG 入库失败: %w", err)
+		}
 	}
 
 	logger.Info("有道笔记导入成功",
@@ -409,16 +404,14 @@ func (s *youdaoService) processSingleNote(taskCtx context.Context, apiKey string
 		return
 	}
 
-	// 异步向量化
-	if s.embedding != nil {
-		go func() {
-			if err := s.embedding.Vectorize(sourceID, content); err != nil {
-				logger.Warn("有道笔记批量导入向量化失败", zap.Uint("source_id", sourceID), zap.Error(err))
-			} else {
-				if err := s.sourceRepo.SetVectorized(sourceID); err != nil {
-					logger.Warn("标记向量化状态失败", zap.Uint("source_id", sourceID), zap.Error(err))
-				}
+	// 同步触发 RAG 入库
+	if s.ingestionSvc != nil {
+		if err := s.ingestionSvc.IngestSingle(context.Background(), sourceID); err != nil {
+			logger.Error("有道笔记批量导入 RAG 入库失败", zap.Uint("source_id", sourceID), zap.Error(err))
+			if updateErr := s.sourceRepo.UpdateStatus(sourceID, "failed", fmt.Sprintf("RAG 入库失败: %v", err)); updateErr != nil {
+				logger.Warn("更新Source状态为failed失败", zap.Uint("source_id", sourceID), zap.Error(updateErr))
 			}
-		}()
+			return
+		}
 	}
 }
