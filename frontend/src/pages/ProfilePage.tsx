@@ -8,6 +8,7 @@ import { deleteAccount } from '../api/notebook';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
+import AvatarImg from '../components/ui/AvatarImg';
 import { getErrorMessage } from '../utils/error';
 
 export default function ProfilePage() {
@@ -84,7 +85,12 @@ export default function ProfilePage() {
     try {
       const res = await uploadAvatar(file);
       if (res.code === 0) {
-        updateProfile({ avatar: res.data.avatar });
+        // 上传接口已在服务端更新头像，只需更新本地状态（不回传 URL 到 PUT /user/profile）
+        useAuthStore.setState((state) => {
+          const updated = state.user ? { ...state.user, avatar: res.data.avatar } : null;
+          if (updated) localStorage.setItem('user', JSON.stringify(updated));
+          return { user: updated };
+        });
         setSuccess('头像上传成功');
         setTimeout(() => setSuccess(''), 2000);
       } else {
@@ -173,7 +179,11 @@ export default function ProfilePage() {
                 {uploadingAvatar ? (
                   <Loader2 size={24} className="animate-spin text-accent" />
                 ) : user?.avatar ? (
-                  <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                  <AvatarImg
+                    src={user.avatar}
+                    className="w-full h-full object-cover"
+                    fallback={<User size={32} className="text-accent" />}
+                  />
                 ) : (
                   <User size={32} className="text-accent" />
                 )}

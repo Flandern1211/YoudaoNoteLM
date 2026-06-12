@@ -21,6 +21,7 @@ export default function NotebookPage() {
   useEffect(() => {
     const loadNotebook = async () => {
       if (!id) return;
+
       setIsLoading(true);
       // 先确保笔记本列表已加载
       const { notebooks } = useNotebookStore.getState();

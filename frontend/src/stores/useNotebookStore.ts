@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Notebook, Source, Conversation, Note } from '../types';
+import type { Notebook, Source, Conversation, Note, ChatMessage, Reference } from '../types';
 import * as notebookApi from '../api/notebook';
 import * as sourceApi from '../api/source';
 import * as importApi from '../api/import';
@@ -7,11 +7,15 @@ import * as searchApi from '../api/search';
 import * as chatApi from '../api/chat';
 import { getErrorMessage } from '../utils/error';
 
+// Store the abort controller for the current streaming request
+let currentStreamAbortController: AbortController | null = null;
+
 interface NotebookState {
   notebooks: Notebook[];
   currentNotebookId: string | null;
   currentConversationId: string | null;
   loading: boolean;
+  streamingContent: string;  // For real-time display
   // sourceID → taskID 映射，用于取消正在运行的导入任务
   taskIdBySourceId: Record<string, string>;
 
@@ -64,10 +68,17 @@ interface NotebookState {
 
   // Conversation actions (API-backed)
   fetchConversations: (notebookId: string) => Promise<void>;
-  createConversation: (notebookId: string) => Promise<string | null>;
+  createConversation: (notebookId: string, title?: string) => Promise<string>;
   setCurrentConversation: (id: string) => void;
   deleteConversation: (notebookId: string, conversationId: string) => Promise<void>;
-  addMessage: (notebookId: string, conversationId: string, message: any) => void;
+  renameConversation: (notebookId: string, conversationId: string, title: string) => Promise<void>;
+
+  // Message actions (API-backed)
+  fetchMessages: (notebookId: string, conversationId: string) => Promise<void>;
+  sendMessage: (notebookId: string, conversationId: string, content: string, sourceIds?: number[]) => Promise<void>;
+  stopGeneration: (notebookId: string, conversationId: string) => Promise<void>;
+  addMessage: (notebookId: string, conversationId: string, message: ChatMessage) => void;
+  updateMessage: (notebookId: string, conversationId: string, messageId: string, updates: Partial<ChatMessage>) => void;
 
   // Note actions (local)
   addNote: (notebookId: string, note: Note) => void;
@@ -109,6 +120,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   currentConversationId: null,
   taskIdBySourceId: {},
   loading: false,
+  streamingContent: '',
 
   fetchNotebooks: async () => {
     set({ loading: true });
@@ -152,15 +164,38 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   },
 
   setCurrentNotebook: async (id) => {
-    set({
-      currentNotebookId: id,
-      currentConversationId: null,
-    });
-    // 并行加载 sources 和 conversations
+    set({ currentNotebookId: id, currentConversationId: null });
+
+    // Fetch sources and conversations
     await Promise.all([
       get().fetchSources(id),
       get().fetchConversations(id),
     ]);
+
+    // After fetching, restore last used conversation or select the latest one
+    const notebook = get().notebooks.find((n) => n.id === id);
+    if (notebook) {
+      if (notebook.conversations.length > 0) {
+        // Try to restore the last used conversation from localStorage
+        const lastConversationId = localStorage.getItem(`lastConversation_${id}`);
+        const lastConversation = lastConversationId
+          ? notebook.conversations.find((c) => c.id === lastConversationId)
+          : null;
+
+        if (lastConversation) {
+          // Restore the last used conversation
+          set({ currentConversationId: lastConversation.id });
+        } else {
+          // Fallback to the latest conversation (first in list since sorted by updated_at desc)
+          set({ currentConversationId: notebook.conversations[0].id });
+          // Save this as the new last conversation
+          localStorage.setItem(`lastConversation_${id}`, notebook.conversations[0].id);
+        }
+      } else {
+        // No conversations, create a new one
+        await get().createConversation(id);
+      }
+    }
   },
 
   createNotebook: async (name) => {
@@ -737,19 +772,18 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     try {
       const res = await chatApi.listConversations(Number(notebookId));
       if (res.code === 0) {
-        const conversations: Conversation[] = res.data.map((c) => ({
-          id: String(c.id),
-          title: c.title,
+        const conversations: Conversation[] = res.data.map((conv) => ({
+          id: String(conv.id),
+          title: conv.title,
+          notebookId: String(conv.notebook_id),
           messages: [],
-          createdAt: c.created_at,
-          updatedAt: c.updated_at,
+          createdAt: conv.created_at,
+          updatedAt: conv.updated_at,
         }));
         set((state) => ({
           notebooks: state.notebooks.map((n) =>
             n.id === notebookId ? { ...n, conversations } : n
           ),
-          // 如果当前没有选中对话，自动选中第一个
-          currentConversationId: get().currentConversationId || conversations[0]?.id || null,
         }));
       }
     } catch (err) {
@@ -757,19 +791,21 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     }
   },
 
-  createConversation: async (notebookId) => {
+  createConversation: async (notebookId, title) => {
     try {
-      const res = await chatApi.createConversation({
-        notebook_id: Number(notebookId),
-      });
+      const res = await chatApi.createConversation(Number(notebookId), title);
       if (res.code === 0) {
         const newConv: Conversation = {
           id: String(res.data.id),
-          title: '新对话',
+          title: title || '新对话',
+          notebookId,
           messages: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+        // Save as the last used conversation
+        localStorage.setItem(`lastConversation_${notebookId}`, newConv.id);
+
         set((state) => ({
           notebooks: state.notebooks.map((n) =>
             n.id === notebookId
@@ -780,22 +816,41 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
         }));
         return newConv.id;
       }
+      throw new Error(res.message);
     } catch (err) {
       console.error('Failed to create conversation:', err);
+      throw err;
     }
-    return null;
   },
 
-  setCurrentConversation: (id) => set({ currentConversationId: id }),
+  setCurrentConversation: (id) => {
+    const notebookId = get().currentNotebookId;
+    if (notebookId) {
+      localStorage.setItem(`lastConversation_${notebookId}`, id);
+    }
+    set({ currentConversationId: id });
+  },
 
   deleteConversation: async (notebookId, conversationId) => {
     try {
       const res = await chatApi.deleteConversation(Number(conversationId));
       if (res.code === 0) {
+        // Clean up localStorage if this was the last used conversation
+        const lastConversationId = localStorage.getItem(`lastConversation_${notebookId}`);
+        if (lastConversationId === conversationId) {
+          localStorage.removeItem(`lastConversation_${notebookId}`);
+        }
+
         set((state) => {
           const notebook = state.notebooks.find((n) => n.id === notebookId);
           if (!notebook) return state;
           const filtered = notebook.conversations.filter((c) => c.id !== conversationId);
+
+          // If we need to switch to a new conversation, save it as the last used
+          if (state.currentConversationId === conversationId && filtered.length > 0) {
+            localStorage.setItem(`lastConversation_${notebookId}`, filtered[0].id);
+          }
+
           return {
             notebooks: state.notebooks.map((n) =>
               n.id === notebookId ? { ...n, conversations: filtered } : n
@@ -809,6 +864,334 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       }
     } catch (err) {
       console.error('Failed to delete conversation:', err);
+      throw err;
+    }
+  },
+
+  renameConversation: async (notebookId, conversationId, title) => {
+    try {
+      const res = await chatApi.updateConversation(Number(conversationId), title);
+      if (res.code === 0) {
+        set((state) => ({
+          notebooks: state.notebooks.map((n) =>
+            n.id === notebookId
+              ? {
+                  ...n,
+                  conversations: n.conversations.map((c) =>
+                    c.id === conversationId ? { ...c, title, updatedAt: new Date().toISOString() } : c
+                  ),
+                }
+              : n
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to rename conversation:', err);
+      throw err;
+    }
+  },
+
+  // ---- Message actions (API-backed) ----
+
+  fetchMessages: async (notebookId, conversationId) => {
+    try {
+      const res = await chatApi.getMessages(Number(conversationId));
+      if (res.code === 0) {
+        const messages: ChatMessage[] = res.data.map((msg) => ({
+          id: String(msg.id),
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.created_at,
+          references: msg.metadata?.references?.map((ref) => ({
+            sourceId: String(ref.source_id),
+            sourceName: ref.source_name,
+            parentBlockId: ref.parent_block_id,
+            chunkContent: ref.chunk_content,
+            score: ref.score,
+          })),
+        }));
+        set((state) => ({
+          notebooks: state.notebooks.map((n) =>
+            n.id === notebookId
+              ? {
+                  ...n,
+                  conversations: n.conversations.map((c) =>
+                    c.id === conversationId ? { ...c, messages } : c
+                  ),
+                }
+              : n
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch messages:', err);
+    }
+  },
+
+  sendMessage: async (notebookId, conversationId, content, sourceIds) => {
+    // Add user message immediately
+    const userMessageId = `msg-user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const userMessage: ChatMessage = {
+      id: userMessageId,
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+    };
+    console.log('Adding user message:', userMessageId, 'to conversation:', conversationId);
+    get().addMessage(notebookId, conversationId, userMessage);
+
+    // Add streaming assistant message placeholder
+    const assistantMessageId = `msg-assistant-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      isStreaming: true,
+    };
+    console.log('Adding assistant placeholder:', assistantMessageId, 'to conversation:', conversationId);
+    get().addMessage(notebookId, conversationId, assistantMessage);
+
+    try {
+      console.log('Sending message to conversation:', conversationId);
+      const response = await chatApi.sendMessage(
+        Number(conversationId),
+        content,
+        sourceIds
+      );
+
+      console.log('Response status:', response.status, response.ok);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        throw new Error(`HTTP error: ${response.status} - ${errorText}`);
+      }
+
+      // Check if response is SSE or regular JSON
+      const contentType = response.headers.get('content-type');
+      console.log('Content-Type:', contentType);
+
+      if (contentType && contentType.includes('application/json')) {
+        // Regular JSON response - handle it directly
+        const jsonData = await response.json();
+        console.log('JSON response:', jsonData);
+
+        if (jsonData.code === 0 && jsonData.data) {
+          // Update the assistant message with the response
+          const assistantContent = jsonData.data.content || jsonData.data.message || '';
+          set((state) => ({
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId
+                ? {
+                    ...n,
+                    conversations: n.conversations.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                              m.id === assistantMessageId
+                                ? { ...m, content: assistantContent, isStreaming: false }
+                                : m
+                            ),
+                          }
+                        : c
+                    ),
+                  }
+                : n
+            ),
+          }));
+        } else {
+          throw new Error(jsonData.message || '请求失败');
+        }
+        return;
+      }
+
+      // SSE response - parse the stream
+      let accumulatedContent = '';
+      const abortController = chatApi.parseSSEStream(response, {
+        onToken: (token) => {
+          console.log('Token received:', token);
+          accumulatedContent += token;
+
+          // Update both streamingContent (for immediate display) and notebooks
+          set((state) => {
+            const newNotebooks = state.notebooks.map((n) => {
+              if (n.id !== notebookId) return n;
+              return {
+                ...n,
+                conversations: n.conversations.map((c) => {
+                  if (c.id !== conversationId) return c;
+                  return {
+                    ...c,
+                    messages: c.messages.map((m) => {
+                      if (m.id !== assistantMessageId) return m;
+                      return { ...m, content: accumulatedContent };
+                    }),
+                    updatedAt: new Date().toISOString(),
+                  };
+                }),
+              };
+            });
+            return { notebooks: newNotebooks, streamingContent: accumulatedContent };
+          });
+        },
+        onReference: (references) => {
+          console.log('References received:', references);
+          const refs: Reference[] = references.map((ref) => ({
+            sourceId: String(ref.source_id),
+            sourceName: ref.source_name,
+            parentBlockId: ref.parent_block_id,
+            chunkContent: ref.chunk_content,
+            score: ref.score,
+          }));
+          set((state) => ({
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId
+                ? {
+                    ...n,
+                    conversations: n.conversations.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                              m.id === assistantMessageId
+                                ? { ...m, references: refs }
+                                : m
+                            ),
+                          }
+                        : c
+                    ),
+                  }
+                : n
+            ),
+          }));
+        },
+        onTitle: (title) => {
+          console.log('Title received:', title);
+          // Update conversation title from SSE event
+          set((state) => ({
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId
+                ? {
+                    ...n,
+                    conversations: n.conversations.map((c) =>
+                      c.id === conversationId ? { ...c, title } : c
+                    ),
+                  }
+                : n
+            ),
+          }));
+        },
+        onDone: () => {
+          console.log('Stream completed');
+          set((state) => ({
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId
+                ? {
+                    ...n,
+                    conversations: n.conversations.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                              m.id === assistantMessageId
+                                ? { ...m, isStreaming: false }
+                                : m
+                            ),
+                            updatedAt: new Date().toISOString(),
+                          }
+                        : c
+                    ),
+                  }
+                : n
+            ),
+          }));
+        },
+        onError: (error) => {
+          console.error('Stream error:', error);
+          set((state) => ({
+            notebooks: state.notebooks.map((n) =>
+              n.id === notebookId
+                ? {
+                    ...n,
+                    conversations: n.conversations.map((c) =>
+                      c.id === conversationId
+                        ? {
+                            ...c,
+                            messages: c.messages.map((m) =>
+                              m.id === assistantMessageId
+                                ? { ...m, content: error, isStreaming: false }
+                                : m
+                            ),
+                          }
+                        : c
+                    ),
+                  }
+                : n
+            ),
+          }));
+        },
+      });
+      // Save abort controller for stopGeneration to use
+      currentStreamAbortController = abortController;
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      set((state) => ({
+        notebooks: state.notebooks.map((n) =>
+          n.id === notebookId
+            ? {
+                ...n,
+                conversations: n.conversations.map((c) =>
+                  c.id === conversationId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m) =>
+                          m.id === assistantMessageId
+                            ? { ...m, content: '发送消息失败，请重试', isStreaming: false }
+                            : m
+                        ),
+                      }
+                    : c
+                ),
+              }
+            : n
+        ),
+      }));
+    }
+  },
+
+  stopGeneration: async (notebookId, conversationId) => {
+    try {
+      // Abort the frontend SSE stream first
+      if (currentStreamAbortController) {
+        currentStreamAbortController.abort();
+        currentStreamAbortController = null;
+      }
+      await chatApi.stopGeneration(Number(conversationId));
+      // Mark any streaming messages as done
+      set((state) => ({
+        notebooks: state.notebooks.map((n) =>
+          n.id === notebookId
+            ? {
+                ...n,
+                conversations: n.conversations.map((c) =>
+                  c.id === conversationId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m) =>
+                          m.isStreaming ? { ...m, isStreaming: false } : m
+                        ),
+                      }
+                    : c
+                ),
+              }
+            : n
+        ),
+      }));
+    } catch (err) {
+      console.error('Failed to stop generation:', err);
     }
   },
 
@@ -824,9 +1207,28 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
                       ...c,
                       messages: [...c.messages, message],
                       updatedAt: new Date().toISOString(),
-                      title: c.messages.length === 0 && message.role === 'user'
-                        ? message.content.slice(0, 20)
-                        : c.title,
+                    }
+                  : c
+              ),
+            }
+          : n
+      ),
+    }));
+  },
+
+  updateMessage: (notebookId, conversationId, messageId, updates) => {
+    set((state) => ({
+      notebooks: state.notebooks.map((n) =>
+        n.id === notebookId
+          ? {
+              ...n,
+              conversations: n.conversations.map((c) =>
+                c.id === conversationId
+                  ? {
+                      ...c,
+                      messages: c.messages.map((m) =>
+                        m.id === messageId ? { ...m, ...updates } : m
+                      ),
                     }
                   : c
               ),

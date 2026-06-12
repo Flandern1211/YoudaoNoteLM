@@ -9,6 +9,7 @@ import { cn } from '../utils/cn';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import AvatarImg from '../components/ui/AvatarImg';
 import * as adminApi from '../api/admin';
 import * as providersApi from '../api/providers';
 import type { AdminUser, SysConfig, ConfigStatus } from '../api/admin';
@@ -135,7 +136,15 @@ function UserManagement() {
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                     {user.avatar ? (
-                      <img src={user.avatar} alt="" className="w-10 h-10 rounded-full" />
+                      <AvatarImg
+                        src={user.avatar}
+                        className="w-10 h-10 rounded-full"
+                        fallback={
+                          <span className="text-accent font-semibold">
+                            {user.nickname?.[0] || user.username[0]}
+                          </span>
+                        }
+                      />
                     ) : (
                       <span className="text-accent font-semibold">
                         {user.nickname?.[0] || user.username[0]}

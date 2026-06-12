@@ -171,6 +171,7 @@ const mockConversations: Conversation[] = [
   {
     id: 'conv-1',
     title: '深度学习与机器学习的区别',
+    notebookId: 'nb-1',
     messages: [
       {
         id: 'msg-1',
@@ -244,6 +245,7 @@ const mockConversations: Conversation[] = [
   {
     id: 'conv-2',
     title: 'Transformer 模型的工作原理',
+    notebookId: 'nb-1',
     messages: [
       {
         id: 'msg-5',

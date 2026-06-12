@@ -40,7 +40,7 @@ function isTokenError(data: any): boolean {
   return data && (data.code === 1005 || data.code === 1006);
 }
 
-async function doRefreshToken(): Promise<string | null> {
+export async function doRefreshToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) return null;
   try {

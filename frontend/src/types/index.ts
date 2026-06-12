@@ -23,18 +23,28 @@ export interface Source {
 // ============ Chat Types ============
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface Reference {
+  sourceId: string;
+  sourceName: string;
+  parentBlockId: number;
+  chunkContent: string;
+  score: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   timestamp: string;
   isStreaming?: boolean;
-  citations?: string[];   // source IDs referenced
+  references?: Reference[];
+  citations?: string[];   // source IDs referenced (deprecated, use references)
 }
 
 export interface Conversation {
   id: string;
   title: string;
+  notebookId: string;
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { cn } from '../utils/cn';
+import AvatarImg from '../components/ui/AvatarImg';
 
 export default function NotebookLayout() {
   const navigate = useNavigate();
@@ -59,7 +60,11 @@ export default function NotebookLayout() {
             >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/20 to-teal/20 border border-accent/30 flex items-center justify-center">
                 {user?.avatar ? (
-                  <img src={user.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                  <AvatarImg
+                    src={user.avatar}
+                    className="w-full h-full rounded-full object-cover"
+                    fallback={<User size={14} className="text-accent" />}
+                  />
                 ) : (
                   <User size={14} className="text-accent" />
                 )}
@@ -106,7 +111,11 @@ export default function NotebookLayout() {
                   )}
                   <div className="border-t border-border mt-1 pt-1">
                     <button
-                      onClick={async () => { await logout(); navigate('/login'); }}
+                      onClick={async () => {
+                        setShowUserMenu(false);
+                        await logout();
+                        // logout 已清除 isAuthenticated，路由守卫会自动跳转到 /login
+                      }}
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-error hover:bg-error/5 transition-colors cursor-pointer"
                     >
                       <LogOut size={14} /> 退出登录
