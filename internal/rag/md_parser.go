@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -37,10 +38,15 @@ type MarkdownParser struct {
 	md goldmark.Markdown
 }
 
-// NewMarkdownParser 创建 Markdown 解析器
+// NewMarkdownParser 创建 Markdown 解析器（启用表格扩展）
 func NewMarkdownParser() *MarkdownParser {
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.Table, // 启用表格扩展
+		),
+	)
 	return &MarkdownParser{
-		md: goldmark.New(),
+		md: md,
 	}
 }
 
@@ -143,6 +149,12 @@ func (p *MarkdownParser) extractContentBlock(n ast.Node, source []byte) *Content
 	case ast.KindList:
 		return &ContentBlock{Type: "paragraph", Content: string(n.Text(source))}
 	default:
+		// 尝试提取表格内容
+		tableContent := p.extractTable(n, source)
+		if tableContent != "" {
+			return &ContentBlock{Type: "table", Content: tableContent}
+		}
+
 		nodeText := string(n.Text(source))
 		if strings.TrimSpace(nodeText) == "" {
 			return nil
@@ -151,8 +163,51 @@ func (p *MarkdownParser) extractContentBlock(n ast.Node, source []byte) *Content
 	}
 }
 
+// extractTable 提取表格内容为 Markdown 格式
+func (p *MarkdownParser) extractTable(n ast.Node, source []byte) string {
+	// 检查是否是表格节点（通过节点类型名称判断）
+	if n.Kind().String() != "Table" {
+		return ""
+	}
+
+	var rows []string
+	var headerRow string
+	isHeader := true
+
+	// 遍历表格的子节点（TableHeader 和 TableRow）
+	for row := n.FirstChild(); row != nil; row = row.NextSibling() {
+		var cells []string
+
+		// 遍历行的子节点（TableCell）
+		for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+			cellText := strings.TrimSpace(string(cell.Text(source)))
+			cells = append(cells, cellText)
+		}
+
+		if len(cells) > 0 {
+			rowStr := "| " + strings.Join(cells, " | ") + " |"
+			if isHeader {
+				headerRow = rowStr
+				// 添加分隔行
+				separator := "| " + strings.Repeat("--- | ", len(cells))
+				rows = append(rows, headerRow)
+				rows = append(rows, separator)
+				isHeader = false
+			} else {
+				rows = append(rows, rowStr)
+			}
+		}
+	}
+
+	if len(rows) > 0 {
+		return strings.Join(rows, "\n")
+	}
+	return ""
+}
+
 // buildContent 将章节的 ContentBlock 列表合并为纯文本
 // 代码块和 mermaid 会重新添加 ``` 标记，保持类型信息
+// 表格保持 Markdown 格式
 func (s *Section) buildContent() string {
 	var parts []string
 	for _, block := range s.Content {
@@ -163,6 +218,9 @@ func (s *Section) buildContent() string {
 		case "mermaid":
 			// 重新添加 mermaid 标记
 			parts = append(parts, "```mermaid\n"+block.Content+"```")
+		case "table":
+			// 表格已经是 Markdown 格式，直接保留
+			parts = append(parts, block.Content)
 		default:
 			parts = append(parts, block.Content)
 		}

@@ -15,7 +15,7 @@ const webSearchToolName = "web_search"
 func NewWebSearchTool(searchService service.SearchService) (tool.InvokableTool, error) {
 	return toolutils.InferTool[service.SearchRequest, *service.SearchResponse](
 		webSearchToolName,
-		"Execute unified web search through the project's Bocha-backed search service.",
+		"通过项目内基于 Bocha 的统一搜索服务执行联网搜索。",
 		func(ctx context.Context, input service.SearchRequest) (*service.SearchResponse, error) {
 			return searchService.Search(ctx, &input)
 		},

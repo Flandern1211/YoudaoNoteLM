@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
+
+	"YoudaoNoteLm/pkg/logger"
 
 	"github.com/cloudwego/eino/schema"
 	milvusclient "github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"go.uber.org/zap"
 )
 
 const (
@@ -30,14 +34,28 @@ type MilvusWriter struct {
 	client milvusclient.Client
 }
 
+var newMilvusClient = milvusclient.NewClient
+
 // NewMilvusWriter 创建 Milvus 写入器
 func NewMilvusWriter(ctx context.Context, cfg MilvusIndexerConfig) (*MilvusWriter, error) {
-	cli, err := milvusclient.NewClient(ctx, milvusclient.Config{
+	start := time.Now()
+	logger.Info("Milvus connection started", zap.String("address", cfg.Address))
+
+	cli, err := newMilvusClient(ctx, milvusclient.Config{
 		Address: cfg.Address,
 	})
 	if err != nil {
+		logger.Error("Milvus connection failed",
+			zap.String("address", cfg.Address),
+			zap.Duration("elapsed", time.Since(start)),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("创建 Milvus 客户端失败: %w", err)
 	}
+	logger.Info("Milvus connection succeeded",
+		zap.String("address", cfg.Address),
+		zap.Duration("elapsed", time.Since(start)),
+	)
 	return &MilvusWriter{client: cli}, nil
 }
 
@@ -165,7 +183,10 @@ func (w *MilvusWriter) Store(ctx context.Context, userID uint, docs []*schema.Do
 		if ct, ok := doc.MetaData["chunk_type"].(string); ok {
 			chunkTypes[i] = ct
 		}
-		metaJSON, _ := json.Marshal(doc.MetaData)
+		metaJSON, err := json.Marshal(doc.MetaData)
+		if err != nil {
+			return fmt.Errorf("序列化文档元数据失败: %w", err)
+		}
 		metadatas[i] = string(metaJSON)
 	}
 
@@ -245,7 +266,10 @@ func (w *MilvusWriter) StoreWithSparse(ctx context.Context, userID uint, docs []
 		if ct, ok := doc.MetaData["chunk_type"].(string); ok {
 			chunkTypes[i] = ct
 		}
-		metaJSON, _ := json.Marshal(doc.MetaData)
+		metaJSON, err := json.Marshal(doc.MetaData)
+		if err != nil {
+			return fmt.Errorf("序列化文档元数据失败: %w", err)
+		}
 		metadatas[i] = string(metaJSON)
 	}
 
