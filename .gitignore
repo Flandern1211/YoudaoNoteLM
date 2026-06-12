@@ -22,8 +22,6 @@ go.work.sum
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
 
 # Environment and secrets
 .env
@@ -43,15 +41,62 @@ Thumbs.db
 /dist/
 /out/
 
-
 # claude
-.claude
+.claude/
 .superpowers
-claude.md
-/configs/config.yaml
-/uploads/
-
 
 # docs
 docs/
 /docs/
+
+# Uploads
+/uploads/
+
+# Config
+/configs/config.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========== Frontend (./frontend/) ==========
+
+# Dependencies
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+frontend/dist-ssr/
+
+# Debug logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# Environment variables
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/*.local
+
+# Editor directories and files
+frontend/.vscode/*
+!frontend/.vscode/extensions.json
+frontend/.idea/
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
+
+# Cache
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+
+# Testing
+frontend/coverage/
