@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"context"
+	"strings"
+
 	"YoudaoNoteLm/internal/service"
 	bizerrors "YoudaoNoteLm/pkg/errors"
 	"YoudaoNoteLm/pkg/jwt"
 	"YoudaoNoteLm/pkg/logger"
 	"YoudaoNoteLm/pkg/response"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -93,6 +95,27 @@ func GetUsername(c *gin.Context) string {
 		return username.(string)
 	}
 	return ""
+}
+
+// contextKey 上下文键类型
+type contextKey string
+
+const (
+	// ctxUserID 用户 ID 上下文键（用于 context.Context）
+	ctxUserID contextKey = "user_id"
+)
+
+// WithUserID 将用户 ID 存入 context.Context
+func WithUserID(ctx context.Context, userID uint) context.Context {
+	return context.WithValue(ctx, ctxUserID, userID)
+}
+
+// GetUserIDFromCtx 从 context.Context 获取用户 ID
+func GetUserIDFromCtx(ctx context.Context) uint {
+	if userID, ok := ctx.Value(ctxUserID).(uint); ok {
+		return userID
+	}
+	return 0
 }
 
 // OptionalAuth 可选的 JWT 认证中间件（仅接受 Access Token，检查黑名单）

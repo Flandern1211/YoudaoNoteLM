@@ -183,7 +183,10 @@ func (w *MilvusWriter) Store(ctx context.Context, userID uint, docs []*schema.Do
 		if ct, ok := doc.MetaData["chunk_type"].(string); ok {
 			chunkTypes[i] = ct
 		}
-		metaJSON, _ := json.Marshal(doc.MetaData)
+		metaJSON, err := json.Marshal(doc.MetaData)
+		if err != nil {
+			return fmt.Errorf("序列化文档元数据失败: %w", err)
+		}
 		metadatas[i] = string(metaJSON)
 	}
 
@@ -263,7 +266,10 @@ func (w *MilvusWriter) StoreWithSparse(ctx context.Context, userID uint, docs []
 		if ct, ok := doc.MetaData["chunk_type"].(string); ok {
 			chunkTypes[i] = ct
 		}
-		metaJSON, _ := json.Marshal(doc.MetaData)
+		metaJSON, err := json.Marshal(doc.MetaData)
+		if err != nil {
+			return fmt.Errorf("序列化文档元数据失败: %w", err)
+		}
 		metadatas[i] = string(metaJSON)
 	}
 

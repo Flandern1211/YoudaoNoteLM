@@ -113,7 +113,6 @@ func (a *App) initDatabase() error {
 		&entity.UserLLMConfig{},
 		&entity.YoudaoBinding{},
 		&entity.SysConfig{},
-		&entity.Source{},
 	); err != nil {
 		logger.Warn("database migration failed", zap.Error(err))
 	}
@@ -135,6 +134,9 @@ func (a *App) initDependencies() {
 	notebookRepo := repository.NewNotebookRepository(a.mysqlDB)
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
 	userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
+	llmConfigRepo := repository.NewUserLLMConfigRepository(a.mysqlDB)
+	conversationRepo := repository.NewConversationRepository(a.mysqlDB)
+	messageRepo := repository.NewMessageRepository(a.mysqlDB)
 
 	// 创建 Service
 	emailSvc := service.NewEmailService()
@@ -178,6 +180,7 @@ func (a *App) initDependencies() {
 	}
 
 	// 创建 RAGRetriever
+	var ragRetriever rag.RAGRetriever
 	if ingestionSvc != nil {
 		userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
 		parentBlockRepo := repository.NewParentBlockRepository(a.mysqlDB)
@@ -201,13 +204,14 @@ func (a *App) initDependencies() {
 		if err != nil {
 			logger.Warn("Milvus Writer 初始化失败，RAGRetriever 不可用", zap.Error(err))
 		} else {
-			a.ragRetriever = rag.NewRAGRetriever(
+			ragRetriever = rag.NewRAGRetriever(
 				milvusWriter,
 				parentBlockRepo,
 				sourceRepo,
 				embedderProvider,
 				5, // defaultTopK
 			)
+			a.ragRetriever = ragRetriever
 			logger.Info("RAGRetriever 初始化成功")
 		}
 	}
@@ -237,6 +241,14 @@ func (a *App) initDependencies() {
 	}
 	generationSvc := service.NewGenerationService(a.ragRetriever, searchSvc, generationModel)
 
+	// 创建 ChatAgentService
+	var chatAgentSvc service.ChatAgentService
+	if a.redis != nil && ragRetriever != nil {
+		chatCache := cache.NewChatCache(a.redis)
+		chatAgentSvc = service.NewChatAgentService(llmConfigRepo, ragRetriever, conversationRepo, messageRepo, chatCache)
+		logger.Info("ChatAgentService 初始化成功")
+	}
+
 	a.router = api.NewRouter(
 		userSvc,
 		authSvc,
@@ -247,6 +259,7 @@ func (a *App) initDependencies() {
 		importerSvc,
 		captchaSvc,
 		tokenBlacklistSvc,
+		chatAgentSvc,
 	)
 }
 

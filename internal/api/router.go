@@ -2,6 +2,7 @@ package api
 
 import (
 	"YoudaoNoteLm/internal/api/v1/auth"
+	"YoudaoNoteLm/internal/api/v1/chat"
 	"YoudaoNoteLm/internal/api/v1/generation"
 	"YoudaoNoteLm/internal/api/v1/importn"
 	"YoudaoNoteLm/internal/api/v1/notebook"
@@ -23,6 +24,7 @@ type Router struct {
 	searchCtrl     *search.Controller
 	generationCtrl *generation.Controller
 	importCtrl     *importn.Controller
+	chatCtrl       *chat.Controller
 	tokenBlacklist service.TokenBlacklistService
 }
 
@@ -37,6 +39,7 @@ func NewRouter(
 	importerService service.ImporterService,
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
+	chatAgentService service.ChatAgentService,
 ) *Router {
 	return &Router{
 		userCtrl:       user.NewController(userService, tokenBlacklist),
@@ -46,6 +49,7 @@ func NewRouter(
 		searchCtrl:     search.NewController(searchService, importerService, tokenBlacklist),
 		generationCtrl: generation.NewController(generationService),
 		importCtrl:     importn.NewController(importerService),
+		chatCtrl:       chat.NewController(chatAgentService),
 		tokenBlacklist: tokenBlacklist,
 	}
 }
@@ -74,5 +78,6 @@ func (r *Router) Setup(engine *gin.Engine) {
 		r.searchCtrl.RegisterRoutes(v1)
 		r.generationCtrl.RegisterRoutes(v1, r.tokenBlacklist)
 		r.importCtrl.RegisterRoutes(v1, r.tokenBlacklist)
+		r.chatCtrl.RegisterRoutes(v1, r.tokenBlacklist)
 	}
 }
