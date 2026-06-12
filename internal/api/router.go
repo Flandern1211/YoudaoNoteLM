@@ -2,8 +2,8 @@ package api
 
 import (
 	"YoudaoNoteLm/internal/api/v1/auth"
+	"YoudaoNoteLm/internal/api/v1/chat"
 	"YoudaoNoteLm/internal/api/v1/generation"
-	chatApi "YoudaoNoteLm/internal/api/v1/
 	"YoudaoNoteLm/internal/api/v1/importn"
 	"YoudaoNoteLm/internal/api/v1/notebook"
 	"YoudaoNoteLm/internal/api/v1/search"
@@ -24,7 +24,7 @@ type Router struct {
 	searchCtrl     *search.Controller
 	generationCtrl *generation.Controller
 	importCtrl     *importn.Controller
-	chatCtrl       *chatApi.Controller
+	chatCtrl       *chat.Controller
 	tokenBlacklist service.TokenBlacklistService
 }
 
@@ -49,7 +49,7 @@ func NewRouter(
 		searchCtrl:     search.NewController(searchService, importerService, tokenBlacklist),
 		generationCtrl: generation.NewController(generationService),
 		importCtrl:     importn.NewController(importerService),
-		chatCtrl:       chatApi.NewController(chatAgentService),
+		chatCtrl:       chat.NewController(chatAgentService),
 		tokenBlacklist: tokenBlacklist,
 	}
 }
