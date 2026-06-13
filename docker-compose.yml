@@ -3,9 +3,7 @@ version: '3.8'
 services:
   # ========== Go 应用 ==========
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${DOCKER_IMAGE:-flandern1211/youdaonote:latest}
     container_name: youdaonote-app
     ports:
       - "${APP_PORT:-8080}:8080"

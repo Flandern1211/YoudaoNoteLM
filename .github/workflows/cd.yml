@@ -62,9 +62,6 @@ jobs:
       url: ${{ vars.STAGING_URL }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -75,49 +72,27 @@ jobs:
           script: |
             cd /home/flandern/youdaonote
 
-            # 备份当前配置
-            if [ -f configs/config.yaml ]; then
-              cp configs/config.yaml configs/config.yaml.backup
-              echo "✅ Config backed up"
-            fi
-
-            # 拉取最新代码
-            git pull origin develop
-            echo "✅ Code updated"
-
-            # 恢复配置文件
-            if [ -f configs/config.yaml.backup ]; then
-              mv configs/config.yaml.backup configs/config.yaml
-              echo "✅ Config restored"
-            fi
+            # Docker Hub 登录
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             # 拉取最新镜像
-            docker-compose pull app
+            docker compose pull app
             echo "✅ Image pulled"
 
-            # 重启服务
-            docker-compose up -d
+            # 重启服务（只重建 app 容器）
+            docker compose up -d app
             echo "✅ Services restarted"
 
             # 等待启动
             sleep 15
 
             # 健康检查
-            status=$(docker-compose ps app | grep -c "Up")
+            status=$(docker compose ps app | grep -c "Up")
             if [ "$status" -gt 0 ]; then
               echo "✅ App container is running"
-
-              # 检查端口
-              port=$(grep "port:" configs/config.yaml | head -1 | awk '{print $2}')
-              if netstat -tuln 2>/dev/null | grep -q ":${port:-8080}"; then
-                echo "✅ Port ${port:-8080} is listening"
-              else
-                echo "⚠️ Port not detected, checking logs..."
-                docker-compose logs --tail=20 app
-              fi
             else
               echo "❌ App failed to start"
-              docker-compose logs --tail=50 app
+              docker compose logs --tail=50 app
               exit 1
             fi
 
@@ -177,40 +152,27 @@ jobs:
           script: |
             cd /home/flandern/youdaonote
 
-            # 备份当前配置
-            if [ -f configs/config.yaml ]; then
-              cp configs/config.yaml configs/config.yaml.production.backup
-              echo "✅ Config backed up"
-            fi
-
-            # 拉取最新代码
-            git pull origin develop
-            echo "✅ Code updated"
-
-            # 恢复配置文件
-            if [ -f configs/config.yaml.production.backup ]; then
-              mv configs/config.yaml.production.backup configs/config.yaml
-              echo "✅ Config restored"
-            fi
+            # Docker Hub 登录
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             # 拉取最新镜像
-            docker-compose pull app
+            docker compose pull app
             echo "✅ Image pulled"
 
-            # 重启服务
-            docker-compose up -d
+            # 重启服务（只重建 app 容器）
+            docker compose up -d app
             echo "✅ Services restarted"
 
             # 等待启动
             sleep 15
 
             # 验证服务
-            status=$(docker-compose ps app | grep -c "Up")
+            status=$(docker compose ps app | grep -c "Up")
             if [ "$status" -gt 0 ]; then
               echo "✅ Production service is running"
             else
               echo "❌ Production service failed to start"
-              docker-compose logs --tail=50 app
+              docker compose logs --tail=50 app
               exit 1
             fi
 
