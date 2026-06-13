@@ -226,5 +226,16 @@ func optionInt(options map[string]any, key string, fallback int) int {
 }
 
 func generationOrchestrationSteps() []string {
-	return []string{"context_prepare", "draft_generate", "structure_check", "fact_enhance", "format_validate", "finalize"}
+	return []string{
+		"context_prepare",
+		"content_analyze",
+		"outline_plan",
+		"content_expand",
+		"draft_generate",
+		"structure_check",
+		"structure_repair",
+		"fact_enhance",
+		"format_validate",
+		"finalize",
+	}
 }

@@ -232,6 +232,15 @@ func buildGenerationContext(req *GenerationRequest, refs []GenerationReference, 
 			b.WriteString(fmt.Sprintf("[%d] %s - %s\n%s\n", i+1, result.Title, result.URL, firstNonEmpty(result.Snippet, result.Content)))
 		}
 	}
+	b.WriteString("\n\n生成约束：\n")
+	if req != nil && req.UseWeb {
+		b.WriteString("以原始 Markdown 和本地 RAG 参考为主，联网搜索只作为补充背景。参考资料会由系统在响应元数据中单独展示，不要在正文输出参考资料、References、来源列表或引用附录。\n")
+	} else {
+		b.WriteString("当前未启用联网搜索，只基于原始 Markdown 和本地 RAG 参考生成。优先提炼主题、核心概念、过程步骤、应用场景和易错点，组织成完整的学习材料；当原始材料不足时，可以做解释性补充，但必须明确保持为学习性展开，不能伪造外部事实。参考资料会由系统在响应元数据中单独展示，不要在正文输出参考资料、References、来源列表或引用附录。\n")
+		if len(refs) == 0 {
+			b.WriteString("如果本地 RAG 参考为空，就直接围绕原始 Markdown 做结构化展开，避免空泛复述。\n")
+		}
+	}
 	return b.String()
 }
 

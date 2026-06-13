@@ -11,10 +11,12 @@ import (
 
 type fakeEinoChatModel struct {
 	messages []*schema.Message
+	opts     []model.Option
 }
 
 func (f *fakeEinoChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	f.messages = input
+	f.opts = opts
 	return schema.AssistantMessage("generated content", nil), nil
 }
 
@@ -52,9 +54,9 @@ func TestEinoGenerationModelBuildsMessages(t *testing.T) {
 
 func TestEinoGenerationModelUsesChinesePromptLabels(t *testing.T) {
 	chat := &fakeEinoChatModel{}
-	model := NewEinoGenerationModel(chat)
+	genModel := NewEinoGenerationModel(chat)
 
-	_, err := model.Generate(context.Background(), GenerationPrompt{
+	_, err := genModel.Generate(context.Background(), GenerationPrompt{
 		AgentName:    "note",
 		System:       "系统提示词",
 		User:         "用户要求",
@@ -77,5 +79,26 @@ func TestEinoGenerationModelUsesChinesePromptLabels(t *testing.T) {
 		if strings.Contains(userContent, unwanted) {
 			t.Fatalf("user message still contains English label %q: %s", unwanted, userContent)
 		}
+	}
+}
+
+func TestEinoGenerationModelUsesLongGenerationBudget(t *testing.T) {
+	chat := &fakeEinoChatModel{}
+	genModel := NewEinoGenerationModel(chat)
+
+	_, err := genModel.Generate(context.Background(), GenerationPrompt{
+		AgentName:    "note",
+		System:       "系统提示词",
+		User:         "生成详细学习笔记",
+		Context:      "上下文",
+		OutputFormat: "输出格式",
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	opts := model.GetCommonOptions(nil, chat.opts...)
+	if opts.MaxTokens == nil || *opts.MaxTokens < 8192 {
+		t.Fatalf("MaxTokens = %v, want at least 8192", opts.MaxTokens)
 	}
 }
