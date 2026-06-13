@@ -57,7 +57,7 @@ jobs:
       # 作用：使用 golangci-lint 检查代码风格和潜在问题
       # 包含：未使用的变量、错误的错误处理、代码风格等
       - name: Run golangci-lint
-        uses: golangci-lint/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v4
         with:
           version: latest
 
