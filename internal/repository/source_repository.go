@@ -69,6 +69,11 @@ func (r *sourceRepository) UpdateStatus(id uint, status string, errMsg string) e
 		"status": status,
 	}
 	if errMsg != "" {
+		// 截断过长的错误信息，防止超出数据库列宽（varchar(1024)）
+		const maxErrMsgLen = 1000
+		if len(errMsg) > maxErrMsgLen {
+			errMsg = errMsg[:maxErrMsgLen] + "...(truncated)"
+		}
 		updates["error_message"] = errMsg
 	}
 	return r.db.Model(&entity.Source{}).Where("id = ?", id).Updates(updates).Error

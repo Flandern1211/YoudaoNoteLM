@@ -28,7 +28,7 @@ export interface ImportTaskData {
   processed_count: number;
   success_count: number;
   fail_count: number;
-  status: 'pending' | 'running' | 'processing' | 'completed' | 'failed' | 'partial_failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'partial_failed' | 'cancelled';
   error_detail: string;
 }
 

@@ -41,6 +41,10 @@ func (r *sysConfigRepository) Update(config *entity.SysConfig) error {
 	return r.db.Save(config).Error
 }
 
+func (r *sysConfigRepository) Delete(id uint) error {
+	return r.db.Delete(&entity.SysConfig{}, id).Error
+}
+
 func (r *sysConfigRepository) GetConfigStatusSummary() ([]map[string]interface{}, error) {
 	type groupStatus struct {
 		ConfigGroup string `gorm:"column:config_group"`

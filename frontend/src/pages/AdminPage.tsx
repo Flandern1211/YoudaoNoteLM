@@ -284,16 +284,14 @@ function ConfigManagement() {
   const fetchConfigsAndProviders = async () => {
     setLoading(true);
     try {
-      const [configsRes, providersRes] = await Promise.all([
+      const [configsRes, providersList] = await Promise.all([
         adminApi.getConfigs(selectedGroup),
         providersApi.getProvidersByType(selectedGroup),
       ]);
       if (configsRes.code === 0) {
         setConfigs(configsRes.data);
       }
-      if (providersRes.code === 0) {
-        setProviders(providersRes.data);
-      }
+      setProviders(providersList);
     } catch (error) {
       console.error('Failed to fetch configs:', error);
     } finally {
@@ -338,10 +336,10 @@ function ConfigManagement() {
     if (!providerInfo) return [];
     const fields = new Set<string>();
     if (providerInfo.required_keys) {
-      providerInfo.required_keys.forEach((k: string) => fields.add(k));
+      providerInfo.required_keys.forEach(k => fields.add(k));
     }
     if (providerInfo.optional_keys) {
-      providerInfo.optional_keys.forEach((k: string) => fields.add(k));
+      providerInfo.optional_keys.forEach(k => fields.add(k));
     }
     return Array.from(fields);
   };

@@ -1,0 +1,70 @@
+# YouDaoNoteLM Docker 环境配置文件
+# 服务器部署时复制为 config.yaml 并修改
+# cp config.docker.yaml.example config.yaml
+
+# 服务器配置
+app:
+  name: "youdao-api"
+  version: "1.0.0"
+  mode: "release"
+  port: 8080
+
+# 数据库配置（Docker 容器内使用服务名访问）
+database:
+  mysql:
+    host: "mysql"          # Docker 服务名，不要用 localhost
+    port: 3306
+    username: "root"
+    password: "your_mysql_root_password"  # 与 .env 中 MYSQL_ROOT_PASSWORD 一致
+    database: "youdao"
+    max_idle_conns: 10
+    max_open_conns: 100
+  redis:
+    host: "redis"          # Docker 服务名，不要用 localhost
+    port: 6379
+    password: "your_redis_password"  # 与 .env 中 REDIS_PASSWORD 一致
+    db: 15
+    pool_size: 10
+
+# JWT 配置
+jwt:
+  secret: "your-random-secret-key-here"
+  access_token_exp: "15m"
+  refresh_token_exp: "24h"
+  issuer: "youdaonotelm"
+
+# 日志配置
+log:
+  level: "info"
+  filename: "logs/app.log"
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true
+
+# 邮箱配置
+email:
+  host: "smtp.qq.com"
+  port: 587
+  username: "your_email@qq.com"
+  password: "your_email_password"
+  from: "your_email@qq.com"
+
+# Milvus 向量数据库配置（Docker 服务名）
+milvus:
+  host: "milvus"           # Docker 服务名
+  port: 19530
+
+# 外部服务配置
+external:
+  markitdown:
+    url: "http://markitdown:8085"  # Docker 服务名，端口 8085
+  minio:
+    endpoint: "minio:9000"         # Docker 服务名
+    access_key: "minioadmin"
+    secret_key: "your_minio_password"  # 与 .env 中 MINIO_ROOT_PASSWORD 一致
+    bucket: "youdaonotelm"
+  youdao:
+    cli_path: "python3"  # 使用 python3 执行 pull.py
+    converter_script_path: "/opt/youdaonote-pull/pull.py"
+    cookies_path: "/app/configs/youdao_cookies.json"  # 容器内路径

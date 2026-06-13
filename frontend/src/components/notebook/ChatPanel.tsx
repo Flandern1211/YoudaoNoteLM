@@ -157,7 +157,7 @@ export default function ChatPanel() {
 
   if (!notebook || !currentNotebookId) return null;
 
-  const selectedSources = notebook.sources.filter((s) => s.selected);
+  const selectedSources = notebook.sources.filter((s) => s.selected && s.status !== 'error');
 
   const handleSend = async () => {
     if (!input.trim() || isStreaming || !conversation?.id) return;

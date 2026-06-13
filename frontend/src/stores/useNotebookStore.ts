@@ -271,10 +271,19 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     try {
       const res = await sourceApi.listSources(Number(notebookId), { page, size, keyword });
       if (res.code === 0) {
-        const serverSources = res.data.list.map(toSource);
         set((state) => {
           const notebook = state.notebooks.find(n => n.id === notebookId);
           if (!notebook) return state;
+
+          // 保留已有的选中状态（source ID → selected 映射）
+          const selectedMap = new Map(notebook.sources.map(s => [s.id, s.selected]));
+
+          const serverSources = res.data.list.map((s) => {
+            const source = toSource(s);
+            // 如果之前有该 source 的选中状态，则保留；否则默认为 true
+            source.selected = selectedMap.has(source.id) ? selectedMap.get(source.id)! : true;
+            return source;
+          });
 
           // 保留本地的 loading/error 状态的 placeholder（ID 以 loading- 开头）
           const localPlaceholders = notebook.sources.filter(s =>
@@ -310,7 +319,14 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     set((state) => ({
       notebooks: state.notebooks.map((n) =>
         n.id === notebookId
-          ? { ...n, sources: n.sources.map((s) => s.id === sourceId ? { ...s, ...updates } : s) }
+          ? {
+            ...n,
+            sources: n.sources.map((s) =>
+              s.id === sourceId
+                ? { ...s, ...updates, ...(updates.status === 'error' ? { selected: false } : {}) }
+                : s
+            ),
+          }
           : n
       ),
     }));

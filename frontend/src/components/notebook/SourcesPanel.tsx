@@ -99,7 +99,12 @@ export default function SourcesPanel() {
       .filter(s => s.type === 'audio' && s.previewId != null)
       .map(s => s.id)
   );
-  const selectableSources = notebook.sources.filter(s => !unconfirmedAudioIds.has(s.id));
+  // 不可选择的 source：未确认的音频 + 导入失败的
+  const nonSelectableIds = new Set([
+    ...unconfirmedAudioIds,
+    ...notebook.sources.filter(s => s.status === 'error').map(s => s.id),
+  ]);
+  const selectableSources = notebook.sources.filter(s => !nonSelectableIds.has(s.id));
   const selectedCount = selectableSources.filter((s) => s.selected).length;
 
   // 检测转写完成但未确认的音频
@@ -642,21 +647,21 @@ export default function SourcesPanel() {
                   'border-transparent'
                 )}>
 
-                {/* Checkbox - controls selection (disabled for unconfirmed audio) */}
+                {/* Checkbox - controls selection (disabled for unconfirmed audio and error sources) */}
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (unconfirmedAudioIds.has(source.id)) return;
+                    if (nonSelectableIds.has(source.id)) return;
                     toggleSourceSelection(currentNotebookId, source.id);
                   }}
                   className={cn(
                     'mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
-                    unconfirmedAudioIds.has(source.id)
+                    nonSelectableIds.has(source.id)
                       ? 'border-border-light opacity-40 cursor-default'
                       : cn('cursor-pointer', source.selected ? 'bg-accent border-accent' : 'border-border-light hover:border-accent/50')
                   )}
                 >
-                  {source.selected && !unconfirmedAudioIds.has(source.id) && <Check size={10} className="text-white" />}
+                  {source.selected && !nonSelectableIds.has(source.id) && <Check size={10} className="text-white" />}
                 </div>
 
                 {/* Main content - click to view (disabled while loading) */}

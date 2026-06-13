@@ -103,7 +103,12 @@ func (s *ingestionService) IngestSingle(ctx context.Context, sourceID uint) erro
 		return err
 	}
 
-	// 7. 获取用户的 Embedder 并向量化
+	// 7. 检查是否有可入库的文档
+	if len(enhancedDocs) == 0 {
+		s.updateFailedStatus(sourceID, "解析后无有效内容，跳过入库")
+		return fmt.Errorf("源 %d 解析后无有效内容", sourceID)
+	}
+
 	enhancedDocs = WrapDocuments(enhancedDocs, sourceID)
 	logger.Info("准备向量化",
 		zap.Uint("source_id", sourceID),

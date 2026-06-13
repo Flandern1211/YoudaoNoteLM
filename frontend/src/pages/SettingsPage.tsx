@@ -80,7 +80,7 @@ export default function SettingsPage() {
   // 检查字段是否为必填
   const isFieldRequired = (fieldName: string): boolean => {
     const providerInfo = getSelectedProviderInfo();
-    if (!providerInfo || !providerInfo.required_keys) return false;
+    if (!providerInfo || providerInfo.required_keys === null) return false;
     return providerInfo.required_keys.includes(fieldName);
   };
 
@@ -88,8 +88,8 @@ export default function SettingsPage() {
   const providerNeedsConfig = (): boolean => {
     const providerInfo = getSelectedProviderInfo();
     if (!providerInfo) return true; // 默认需要配置
-    return (providerInfo.required_keys != null && providerInfo.required_keys.length > 0) ||
-           (providerInfo.optional_keys != null && providerInfo.optional_keys.length > 0);
+    return (providerInfo.required_keys !== null && providerInfo.required_keys.length > 0) ||
+           (providerInfo.optional_keys !== null && providerInfo.optional_keys.length > 0);
   };
 
   // 获取所有需要显示的字段（必填 + 可选）
@@ -98,10 +98,10 @@ export default function SettingsPage() {
     if (!providerInfo) return [];
     const fields = new Set<string>();
     if (providerInfo.required_keys) {
-      providerInfo.required_keys.forEach((k: string) => fields.add(k));
+      providerInfo.required_keys.forEach(k => fields.add(k));
     }
     if (providerInfo.optional_keys) {
-      providerInfo.optional_keys.forEach((k: string) => fields.add(k));
+      providerInfo.optional_keys.forEach(k => fields.add(k));
     }
     return Array.from(fields);
   };
@@ -142,12 +142,8 @@ export default function SettingsPage() {
   const fetchProviders = async () => {
     try {
       const serviceType = activeTab === 'llm' ? 'llm' : activeTab;
-      const res = await providersApi.getProvidersByType(serviceType);
-      if (res.code === 0) {
-        setProviders(res.data);
-      } else {
-        setProviders([]);
-      }
+      const providersList = await providersApi.getProvidersByType(serviceType);
+      setProviders(providersList);
     } catch (error) {
       console.error('Failed to fetch providers:', error);
       setProviders([]);

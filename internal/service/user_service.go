@@ -5,7 +5,7 @@ import (
 	dto "YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/model/entity"
 	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service/external"
+	"YoudaoNoteLm/internal/service/external/storage"
 	"YoudaoNoteLm/pkg/logger"
 	"YoudaoNoteLm/pkg/response"
 	"context"
@@ -24,11 +24,11 @@ import (
 type userService struct {
 	userRepo      repository.UserRepository
 	verifyCodeSvc VerifyCodeService
-	storage       external.FileStorage
+	storage       storage.FileStorage
 }
 
 // NewUserService 创建用户服务
-func NewUserService(userRepo repository.UserRepository, verifyCodeSvc VerifyCodeService, storage external.FileStorage) UserService {
+func NewUserService(userRepo repository.UserRepository, verifyCodeSvc VerifyCodeService, storage storage.FileStorage) UserService {
 	return &userService{
 		userRepo:      userRepo,
 		verifyCodeSvc: verifyCodeSvc,

@@ -1,6 +1,100 @@
 package config
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+// Validate 校验所有必填配置项，缺失或无效时返回 error。
+func (c *Config) Validate() error {
+	// App
+	if c.App.Name == "" {
+		return fmt.Errorf("app.name 不能为空")
+	}
+	if c.App.Port == 0 {
+		return fmt.Errorf("app.port 不能为空")
+	}
+
+	// MySQL
+	if c.Database.MySQL.Host == "" {
+		return fmt.Errorf("database.mysql.host 不能为空")
+	}
+	if c.Database.MySQL.Port == 0 {
+		return fmt.Errorf("database.mysql.port 不能为空")
+	}
+	if c.Database.MySQL.Username == "" {
+		return fmt.Errorf("database.mysql.username 不能为空")
+	}
+	if c.Database.MySQL.Database == "" {
+		return fmt.Errorf("database.mysql.database 不能为空")
+	}
+
+	// Redis
+	if c.Database.Redis.Host == "" {
+		return fmt.Errorf("database.redis.host 不能为空")
+	}
+	if c.Database.Redis.Port == 0 {
+		return fmt.Errorf("database.redis.port 不能为空")
+	}
+
+	// JWT
+	if c.JWT.Secret == "" {
+		return fmt.Errorf("jwt.secret 不能为空")
+	}
+
+	// Log
+	if c.Log.Filename == "" {
+		return fmt.Errorf("log.filename 不能为空")
+	}
+
+	// Email
+	if c.Email.Host == "" {
+		return fmt.Errorf("email.host 不能为空")
+	}
+	if c.Email.Port == 0 {
+		return fmt.Errorf("email.port 不能为空")
+	}
+	if c.Email.Username == "" {
+		return fmt.Errorf("email.username 不能为空")
+	}
+	if c.Email.Password == "" {
+		return fmt.Errorf("email.password 不能为空")
+	}
+
+	// Milvus
+	if c.Milvus.Host == "" {
+		return fmt.Errorf("milvus.host 不能为空")
+	}
+	if c.Milvus.Port == 0 {
+		return fmt.Errorf("milvus.port 不能为空")
+	}
+
+	// External - MarkItDown
+	if c.External.MarkItDown.URL == "" {
+		return fmt.Errorf("external.markitdown.url 不能为空")
+	}
+
+	// External - MinIO
+	if c.External.MinIO.Endpoint == "" {
+		return fmt.Errorf("external.minio.endpoint 不能为空")
+	}
+	if c.External.MinIO.AccessKey == "" {
+		return fmt.Errorf("external.minio.access_key 不能为空")
+	}
+	if c.External.MinIO.SecretKey == "" {
+		return fmt.Errorf("external.minio.secret_key 不能为空")
+	}
+	if c.External.MinIO.Bucket == "" {
+		return fmt.Errorf("external.minio.bucket 不能为空")
+	}
+
+	// External - Youdao
+	if c.External.Youdao.CLIPath == "" {
+		return fmt.Errorf("external.youdao.cli_path 不能为空")
+	}
+
+	return nil
+}
 
 // Config 应用配置结构体
 type Config struct {
@@ -11,68 +105,37 @@ type Config struct {
 	CORS     CORSConfig     `mapstructure:"cors"`
 	Email    EmailConfig    `mapstructure:"email"`
 	External ExternalConfig `mapstructure:"external"`
+	Milvus   MilvusConfig   `mapstructure:"milvus"`
+}
+
+// MilvusConfig Milvus 向量数据库配置
+type MilvusConfig struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
+}
+
+// GetAddress 返回 host:port 格式的地址
+func (c *MilvusConfig) GetAddress() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
 
 // ExternalConfig 外部服务配置
 type ExternalConfig struct {
 	MarkItDown MarkItDownConfig `mapstructure:"markitdown"`
-	ASR        ASRConfig        `mapstructure:"asr"`
 	MinIO      MinIOConfig      `mapstructure:"minio"`
-	Milvus     MilvusConfig     `mapstructure:"milvus"`
-	Bocha      BochaConfig      `mapstructure:"bocha"`
+	Youdao     YoudaoConfig     `mapstructure:"youdao"`
 }
 
-// BochaConfig 博查联网搜索配置
-type BochaConfig struct {
-	BaseURL         string `mapstructure:"base_url"`
-	Endpoint        string `mapstructure:"endpoint"`
-	APIKey          string `mapstructure:"api_key"`
-	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`
-	DefaultCount    int    `mapstructure:"default_count"`
-	Summary         bool   `mapstructure:"summary"`
-	CacheTTLSeconds int    `mapstructure:"cache_ttl_seconds"`
-	MaxCount        int    `mapstructure:"max_count"`
-}
-
-// MilvusConfig Milvus 向量数据库配
-// MilvusConfig Milvus 向量数据库配置
-type MilvusConfig struct {
-	Address  string `mapstructure:"address"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+// YoudaoConfig 有道云笔记 CLI 配置
+type YoudaoConfig struct {
+	CLIPath             string `mapstructure:"cli_path"`              // CLI 路径，默认 "youdaonote"（在 PATH 中）
+	ConverterScriptPath string `mapstructure:"converter_script_path"` // youdaonote-pull 转换脚本路径（可选，用于 .note 格式转换）
+	CookiesPath         string `mapstructure:"cookies_path"`          // youdaonote cookies 文件路径（可选，用于 .note 格式转换）
 }
 
 // MarkItDownConfig 文档转换服务配置
 type MarkItDownConfig struct {
 	URL string `mapstructure:"url"`
-}
-
-// ASRConfig ASR 语音转文本配置
-// provider: aliyun_nls / whisper / ...
-// params: 各服务商特有参数，通过 provider 分发
-type ASRConfig struct {
-	Provider string                 `mapstructure:"provider"`
-	Params   map[string]interface{} `mapstructure:"params"`
-}
-
-// GetString 获取参数中的字符串值
-func (c *ASRConfig) GetString(key string) string {
-	if v, ok := c.Params[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-// GetInt 获取参数中的整数值
-func (c *ASRConfig) GetInt(key string) int {
-	if v, ok := c.Params[key]; ok {
-		if n, ok := v.(int); ok {
-			return n
-		}
-	}
-	return 0
 }
 
 // MinIOConfig MinIO 对象存储配置

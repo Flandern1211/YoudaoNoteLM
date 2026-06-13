@@ -1,36 +1,61 @@
 import client from './client';
-import type { ApiResponse } from './auth';
 
-// ============ Types ============
+// ===== Types =====
 
 export interface ProviderInfo {
-  name: string;
+  service_type: string;
   provider: string;
   display_name: string;
-  description: string;
-  type: string;
+  required_keys: string[] | null;
+  optional_keys: string[] | null;
+  implemented: boolean;
   key_labels?: Record<string, string>;
-  required_keys?: string[];
-  optional_keys?: string[];
-  config_schema?: Record<string, any>;
 }
 
-// ============ API Functions ============
+export interface ProvidersResponse {
+  code: number;
+  data: {
+    providers: ProviderInfo[];
+  };
+  message?: string;
+}
 
-// 1. Get all providers
-export async function getProviders(): Promise<ApiResponse<ProviderInfo[]>> {
-  const res = await client.get<ApiResponse<ProviderInfo[]>>('/providers');
+// ===== API Functions =====
+
+/**
+ * 获取所有已注册的 Provider
+ * @param serviceType 可选的服务类型过滤：search, llm, embedding, asr
+ */
+export async function listProviders(serviceType?: string): Promise<ProvidersResponse> {
+  const params = serviceType ? { type: serviceType } : {};
+  const res = await client.get('/providers', { params });
   return res.data;
 }
 
-// 2. Get providers by type
-export async function getProvidersByType(type: string): Promise<ApiResponse<ProviderInfo[]>> {
-  const res = await client.get<ApiResponse<ProviderInfo[]>>(`/providers?type=${type}`);
-  return res.data;
+/**
+ * 按服务类型获取 Provider 列表
+ */
+export async function getProvidersByType(serviceType: string): Promise<ProviderInfo[]> {
+  const res = await listProviders(serviceType);
+  return res.data?.providers || [];
 }
 
-// 3. Get active config for a provider type
-export async function getActiveConfig(type: string): Promise<ApiResponse<{ source: string; provider: string; display_name: string } | null>> {
-  const res = await client.get<ApiResponse<{ source: string; provider: string; display_name: string } | null>>(`/providers/active?type=${type}`);
+/**
+ * 获取当前生效的配置（用户配置优先，否则系统配置）
+ * @param serviceType 服务类型：search, llm, embedding, asr
+ * @param userId 用户ID（可选，不传则返回系统配置）
+ */
+export async function getActiveConfig(serviceType: string, userId?: number): Promise<{
+  code: number;
+  data: {
+    source: 'user' | 'system' | 'default';
+    provider: string;
+    display_name: string;
+  };
+  message?: string;
+}> {
+  const params: Record<string, any> = { type: serviceType };
+  if (userId) params.user_id = userId;
+  const res = await client.get('/providers/active', { params });
   return res.data;
 }

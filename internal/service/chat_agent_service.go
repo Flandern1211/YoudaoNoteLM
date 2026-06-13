@@ -31,7 +31,7 @@ import (
 
 // chatAgentService Agent 对话服务实现
 type chatAgentService struct {
-	llmConfigRepo    repository.UserLLMConfigRepository
+	configSvc        ConfigService
 	retriever        rag.RAGRetriever
 	conversationRepo repository.ConversationRepository
 	messageRepo      repository.MessageRepository
@@ -41,14 +41,14 @@ type chatAgentService struct {
 
 // NewChatAgentService 创建 Agent 对话服务
 func NewChatAgentService(
-	llmConfigRepo repository.UserLLMConfigRepository,
+	configSvc ConfigService,
 	retriever rag.RAGRetriever,
 	conversationRepo repository.ConversationRepository,
 	messageRepo repository.MessageRepository,
 	chatCache *cache.ChatCache,
 ) ChatAgentService {
 	return &chatAgentService{
-		llmConfigRepo:    llmConfigRepo,
+		configSvc:        configSvc,
 		retriever:        retriever,
 		conversationRepo: conversationRepo,
 		messageRepo:      messageRepo,
@@ -123,10 +123,10 @@ func (s *chatAgentService) processWithAgentAsync(ctx context.Context, conversati
 
 	// 2. 获取用户的 LLM 配置
 	logger.Info("[Agent] 步骤1: 获取用户 LLM 配置")
-	llmConfig, err := s.llmConfigRepo.FindDefaultByUserID(req.UserID)
+	llmConfig, err := s.configSvc.GetUserConfig(req.UserID, "llm")
 	if err != nil || llmConfig == nil {
 		logger.Error("[Agent] 获取 LLM 配置失败", zap.Error(err))
-		s.sendAgentError(eventCh, "获取 AI 配置失败")
+		s.sendAgentError(eventCh, "获取 AI 配置失败，请先在设置中配置 LLM 服务")
 		return
 	}
 
@@ -294,24 +294,24 @@ func (s *chatAgentService) forwardAgentEvents(ctx context.Context, eventCh chan<
 			if output.Role == schema.Assistant {
 				hasToolCalls := len(msg.ToolCalls) > 0
 
-				// 只有最终回答（没有 tool calls）才累加到 fullContent
-				if msg.Content != "" {
-					if !hasToolCalls {
-						fullContent += msg.Content
-					}
-					eventCh <- AgentStreamEvent{
-						Type:    AgentEventToken,
-						Content: msg.Content,
-					}
-				}
-
-				// 处理工具调用
 				if hasToolCalls {
+					// 有工具调用时，只发送工具调用事件，不发送内容（避免显示中间推理文本）
 					for _, tc := range msg.ToolCalls {
 						eventCh <- AgentStreamEvent{
 							Type:    AgentEventToolCall,
 							Content: tc.Function.Name,
 							Data:    tc.Function.Arguments,
+						}
+					}
+				} else if msg.Content != "" {
+					// 过滤掉 content 中的工具调用 XML（某些 LLM 会将 tool call 放在 content 中）
+					filteredContent := filterToolCallXML(msg.Content)
+					if filteredContent != "" {
+						// 最终回答（没有 tool calls）才累加到 fullContent 并发送 token
+						fullContent += filteredContent
+						eventCh <- AgentStreamEvent{
+							Type:    AgentEventToken,
+							Content: filteredContent,
 						}
 					}
 				}
@@ -329,6 +329,37 @@ func (s *chatAgentService) forwardAgentEvents(ctx context.Context, eventCh chan<
 	}
 
 	return fullContent, references
+}
+
+// filterToolCallXML 过滤掉内容中的工具调用 XML 标签
+// 某些 LLM（如 DeepSeek、千问等）会将 tool_call 以 XML 格式放在 content 中
+func filterToolCallXML(content string) string {
+	// 检查是否包含  标签
+	if !strings.Contains(content, "<tool_call>") || !strings.Contains(content, "</tool_call>") {
+		return content
+	}
+
+	// 移除  到  之间的内容（包括标签本身）
+	result := content
+	for {
+		startIdx := strings.Index(result, "<tool_call>")
+		if startIdx == -1 {
+			break
+		}
+		endIdx := strings.Index(result[startIdx:], "</tool_call>")
+		if endIdx == -1 {
+			// 没有闭合标签，移除从 startIdx 开始的所有内容
+			result = result[:startIdx]
+			break
+		}
+		// 移除 tool_call 标签及其内容
+		endIdx += startIdx + len("</tool_call>")
+		result = result[:startIdx] + result[endIdx:]
+	}
+
+	// 清理多余的空白字符
+	result = strings.TrimSpace(result)
+	return result
 }
 
 // sendAgentError 发送错误事件
@@ -448,7 +479,7 @@ func (s *chatAgentService) generateAndUpdateTitle(ctx context.Context, conversat
 
 // getChatModel 获取用户的 ChatModel
 func (s *chatAgentService) getChatModel(ctx context.Context, userID uint) (*model.ChatModel, error) {
-	cfg, err := s.llmConfigRepo.FindDefaultByUserID(userID)
+	cfg, err := s.configSvc.GetUserConfig(userID, "llm")
 	if err != nil {
 		return nil, fmt.Errorf("获取用户 LLM 配置失败: %w", err)
 	}

@@ -1,6 +1,20 @@
 package app
 
 import (
+	searchAgent "YoudaoNoteLm/internal/agent/search"
+	"YoudaoNoteLm/internal/api"
+	"YoudaoNoteLm/internal/model/entity"
+	"YoudaoNoteLm/internal/rag"
+	"YoudaoNoteLm/internal/repository"
+	"YoudaoNoteLm/internal/service"
+	"YoudaoNoteLm/internal/service/external"
+	externalMarkitdown "YoudaoNoteLm/internal/service/external/markitdown"
+	externalStorage "YoudaoNoteLm/internal/service/external/storage"
+	externalYoudao "YoudaoNoteLm/internal/service/external/youdao"
+	"YoudaoNoteLm/pkg/cache"
+	"YoudaoNoteLm/pkg/config"
+	"YoudaoNoteLm/pkg/database"
+	"YoudaoNoteLm/pkg/logger"
 	"context"
 	"fmt"
 	"net/http"
@@ -9,16 +23,11 @@ import (
 	"syscall"
 	"time"
 
-	"YoudaoNoteLm/internal/api"
-	"YoudaoNoteLm/internal/model/entity"
-	"YoudaoNoteLm/internal/rag"
-	"YoudaoNoteLm/internal/repository"
-	"YoudaoNoteLm/internal/service"
-	"YoudaoNoteLm/internal/service/external"
-	"YoudaoNoteLm/pkg/cache"
-	"YoudaoNoteLm/pkg/config"
-	"YoudaoNoteLm/pkg/database"
-	"YoudaoNoteLm/pkg/logger"
+	// 触发 provider 注册（各子包 init() 会自动注册到全局 Registry）
+	_ "YoudaoNoteLm/internal/service/external/asr"
+	_ "YoudaoNoteLm/internal/service/external/embedding"
+	_ "YoudaoNoteLm/internal/service/external/llm"
+	_ "YoudaoNoteLm/internal/service/external/search"
 
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/gin-gonic/gin"
@@ -48,12 +57,17 @@ func NewApp() *App {
 
 // Initialize 初始化应用依赖。
 func (a *App) Initialize() error {
+	// 1. 加载配置
 	if err := a.initConfig(); err != nil {
 		return err
 	}
+
+	// 2. 初始化日志
 	if err := a.initLogger(); err != nil {
 		return err
 	}
+
+	// 3. 初始化数据库
 	if err := a.initDatabase(); err != nil {
 		return err
 	}
@@ -110,17 +124,16 @@ func (a *App) initDatabase() error {
 		&entity.Source{},
 		&entity.ParentBlock{},
 		&entity.UserConfig{},
-		&entity.UserLLMConfig{},
 		&entity.YoudaoBinding{},
 		&entity.SysConfig{},
 	); err != nil {
-		logger.Warn("database migration failed", zap.Error(err))
+		return fmt.Errorf("database migration failed: %w", err)
 	}
 
-	// 初始化 Redis（可选）
+	// 初始化 Redis
 	rs, err := database.InitRedis(&a.cfg.Database.Redis)
 	if err != nil {
-		logger.Warn("init redis failed, continue without redis", zap.Error(err))
+		return fmt.Errorf("init redis failed: %w", err)
 	}
 	a.redis = rs
 
@@ -133,152 +146,149 @@ func (a *App) initDependencies() {
 	userRepo := repository.NewUserRepository(a.mysqlDB)
 	notebookRepo := repository.NewNotebookRepository(a.mysqlDB)
 	sourceRepo := repository.NewSourceRepository(a.mysqlDB)
+	sysConfigRepo := repository.NewSysConfigRepository(a.mysqlDB)
 	userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
-	llmConfigRepo := repository.NewUserLLMConfigRepository(a.mysqlDB)
 	conversationRepo := repository.NewConversationRepository(a.mysqlDB)
 	messageRepo := repository.NewMessageRepository(a.mysqlDB)
+
+	// 创建外部服务客户端
+	markitdownClient := externalMarkitdown.NewClient(a.cfg.External.MarkItDown.URL)
+	minioStorage, err := externalStorage.NewMinIOStorage(
+		a.cfg.External.MinIO.Endpoint,
+		a.cfg.External.MinIO.AccessKey,
+		a.cfg.External.MinIO.SecretKey,
+		a.cfg.External.MinIO.Bucket,
+	)
+	if err != nil {
+		logger.Fatal("MinIO 初始化失败", zap.Error(err))
+	}
 
 	// 创建 Service
 	emailSvc := service.NewEmailService()
 	verifyCodeSvc := service.NewVerifyCodeService(a.redis, emailSvc)
 	captchaSvc := service.NewCaptchaService(a.redis)
 	tokenBlacklistSvc := service.NewTokenBlacklistService(a.redis)
-
-	// 创建外部服务客户端
-	markitdownClient := external.NewMarkitdownClient(a.cfg.External.MarkItDown.URL)
-	minioStorage := external.NewMinIOStorage(
-		a.cfg.External.MinIO.Endpoint,
-		a.cfg.External.MinIO.AccessKey,
-		a.cfg.External.MinIO.SecretKey,
-		a.cfg.External.MinIO.Bucket,
-	)
-	bochaClient := external.NewBochaSearchClient(&http.Client{}, a.cfg.External.Bocha.Endpoint)
-
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc, minioStorage)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
 	notebookSvc := service.NewNotebookService(notebookRepo)
+	sourceSvc := service.NewSourceService(sourceRepo, minioStorage)
+	adminSvc := service.NewAdminService(userRepo, sysConfigRepo, nil)
 
-	// ASR 服务（根据 provider 配置自动选择实现）
-	asrSvc := external.NewASRService(a.cfg.External.ASR)
-	// 注入 MinIO 存储，ASR 需要生成预签名 URL
-	if setter, ok := asrSvc.(interface{ SetStorage(external.FileStorage) }); ok {
-		setter.SetStorage(minioStorage)
-	}
-
-	var redisCache *cache.Cache
-	if a.redis != nil {
-		redisCache = cache.New(a.redis)
-	}
+	// 创建缓存
+	redisCache := cache.New(a.redis)
 	importTaskCache := cache.NewImportTaskCache(redisCache)
 	audioPreviewCache := cache.NewAudioPreviewCache(redisCache)
-	searchSvc := service.NewSearchService(bochaClient, userConfigRepo, redisCache, a.cfg.External.Bocha)
 
-	// 创建 IngestionService
-	ingestionSvc := a.initIngestionService(sourceRepo)
-	if ingestionSvc == nil {
-		logger.Warn("ingestion service unavailable, vector ingestion disabled")
-	}
+	// 创建 ConfigService（配置路由降级，管理 ASR/Search/LLM/Embedding 等动态服务）
+	configSvc := service.NewConfigService(sysConfigRepo, userConfigRepo, redisCache, minioStorage)
 
-	// 创建 RAGRetriever
-	var ragRetriever rag.RAGRetriever
-	if ingestionSvc != nil {
-		userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
-		parentBlockRepo := repository.NewParentBlockRepository(a.mysqlDB)
-		embedderProvider := func(ctx context.Context, userID uint) (embedding.Embedder, error) {
-			cfg, err := userConfigRepo.FindByUserAndType(userID, "embedding")
-			if err != nil {
-				return nil, err
-			}
-			if cfg == nil {
-				return nil, fmt.Errorf("用户 %d 未配置 Embedding", userID)
-			}
-			return rag.NewEmbedder(ctx, cfg)
-		}
+	// 创建 IngestionService（向量入库）
+	ingestionSvc := a.initIngestionService(sourceRepo, configSvc)
 
-		// 创建独立的 MilvusWriter 用于检索（Milvus 客户端轻量）
-		milvusCtx, milvusCancel := milvusInitContext()
-		milvusWriter, err := rag.NewMilvusWriter(milvusCtx, rag.MilvusIndexerConfig{
-			Address: a.cfg.External.Milvus.Address,
-		})
-		milvusCancel()
-		if err != nil {
-			logger.Warn("Milvus Writer 初始化失败，RAGRetriever 不可用", zap.Error(err))
-		} else {
-			ragRetriever = rag.NewRAGRetriever(
-				milvusWriter,
-				parentBlockRepo,
-				sourceRepo,
-				embedderProvider,
-				5, // defaultTopK
-			)
-			a.ragRetriever = ragRetriever
-			logger.Info("RAGRetriever 初始化成功")
-		}
-	}
-
-	// 创建 SourceService（需要 IngestionService 来删除向量数据）
-	sourceSvc := service.NewSourceService(sourceRepo, ingestionSvc)
-
-	// 创建导入服务
+	// 创建导入服务（ASR 通过 ConfigService 动态获取，RAG 通过 IngestionService）
 	importerSvc := service.NewImporterService(
-		markitdownClient,
-		asrSvc,
-		minioStorage,
-		sourceRepo,
-		importTaskCache,
-		audioPreviewCache,
+		configSvc, markitdownClient, minioStorage,
+		sourceRepo, importTaskCache, audioPreviewCache,
 		ingestionSvc,
 	)
-	generationSvc := service.NewGenerationService(a.ragRetriever, searchSvc, nil)
+
+	// 创建 RAGRetriever
+	parentBlockRepo := repository.NewParentBlockRepository(a.mysqlDB)
+	registry := external.GetGlobalRegistry()
+	retrieverEmbedderProvider := func(ctx context.Context, userID uint) (embedding.Embedder, error) {
+		cfg, err := configSvc.GetUserConfig(userID, "embedding")
+		if err != nil {
+			return nil, fmt.Errorf("获取 Embedding 配置失败: %w", err)
+		}
+		if cfg == nil {
+			return nil, fmt.Errorf("请先在设置中配置 Embedding 服务")
+		}
+		return rag.NewEmbedderFromRegistry(ctx, registry, cfg)
+	}
+
+	// 创建独立的 MilvusWriter 用于检索
+	milvusCtx, milvusCancel := milvusInitContext()
+	milvusWriter, err := rag.NewMilvusWriter(milvusCtx, rag.MilvusIndexerConfig{
+		Address: a.cfg.Milvus.GetAddress(),
+	})
+	milvusCancel()
+	if err != nil {
+		logger.Fatal("Milvus Writer 初始化失败", zap.Error(err))
+	}
+	ragRetriever := rag.NewRAGRetriever(
+		milvusWriter,
+		parentBlockRepo,
+		sourceRepo,
+		retrieverEmbedderProvider,
+		5, // defaultTopK
+	)
+	a.ragRetriever = ragRetriever
+	logger.Info("RAGRetriever 初始化成功")
+
+	// 创建用户配置服务
+	userCfgSvc := service.NewUserConfigService(userConfigRepo, configSvc)
+
+	// 创建搜索 Agent
+	searchAgentInst := searchAgent.NewSearchAgent(configSvc, importerSvc)
+	searchAgentSvc := service.NewSearchAgentService(configSvc, importerSvc, searchAgentInst)
+
+	// 创建有道云笔记服务
+	youdaoCLI := externalYoudao.NewCLI(a.cfg.External.Youdao.CLIPath, a.cfg.External.Youdao.ConverterScriptPath)
+	youdaoBindingRepo := repository.NewYoudaoBindingRepository(a.mysqlDB)
+	youdaoSvc := service.NewYoudaoService(youdaoCLI, youdaoBindingRepo, sourceRepo, ingestionSvc, a.cfg.External.Youdao.CookiesPath)
+
+	// 创建生成服务（SearchService 暂为 nil，后续可接入）
+	generationSvc := service.NewGenerationService(a.ragRetriever, nil, nil)
 
 	// 创建 ChatAgentService
-	var chatAgentSvc service.ChatAgentService
-	if a.redis != nil && ragRetriever != nil {
-		chatCache := cache.NewChatCache(a.redis)
-		chatAgentSvc = service.NewChatAgentService(llmConfigRepo, ragRetriever, conversationRepo, messageRepo, chatCache)
-		logger.Info("ChatAgentService 初始化成功")
-	}
+	chatCache := cache.NewChatCache(a.redis)
+	chatAgentSvc := service.NewChatAgentService(configSvc, ragRetriever, conversationRepo, messageRepo, chatCache)
+	logger.Info("ChatAgentService 初始化成功")
 
 	a.router = api.NewRouter(
 		userSvc,
 		authSvc,
 		notebookSvc,
 		sourceSvc,
-		searchSvc,
+		nil, // searchService 暂为 nil
 		generationSvc,
 		importerSvc,
+		adminSvc,
+		userCfgSvc,
+		searchAgentSvc,
 		captchaSvc,
 		tokenBlacklistSvc,
 		chatAgentSvc,
+		configSvc,
+		youdaoSvc,
 	)
 }
 
 // initIngestionService 初始化入库服务
-// 从数据库读取用户的 Embedding 配置，创建 EmbedderProvider 和 MilvusWriter
-func (a *App) initIngestionService(sourceRepo repository.SourceRepository) rag.IngestionService {
+// 通过 ConfigService + Registry 创建 Embedder，支持所有已注册的 embedding provider
+func (a *App) initIngestionService(sourceRepo repository.SourceRepository, configSvc service.ConfigService) rag.IngestionService {
 	ctx, cancel := milvusInitContext()
 	defer cancel()
 
 	// 创建 Milvus Writer
 	milvusWriter, err := rag.NewMilvusWriter(ctx, rag.MilvusIndexerConfig{
-		Address: a.cfg.External.Milvus.Address,
+		Address: a.cfg.Milvus.GetAddress(),
 	})
 	if err != nil {
-		logger.Warn("init milvus writer failed", zap.Error(err))
-		return nil
+		logger.Fatal("init milvus writer failed", zap.Error(err))
 	}
 
-	// 创建 EmbedderProvider：根据 userID 从数据库读取配置
-	userConfigRepo := repository.NewUserConfigRepository(a.mysqlDB)
+	// 创建 EmbedderProvider：通过 ConfigService + Registry 创建
+	registry := external.GetGlobalRegistry()
 	embedderProvider := func(ctx context.Context, userID uint) (embedding.Embedder, error) {
-		cfg, err := userConfigRepo.FindByUserAndType(userID, "embedding")
+		cfg, err := configSvc.GetUserConfig(userID, "embedding")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("获取 Embedding 配置失败: %w", err)
 		}
 		if cfg == nil {
-			return nil, fmt.Errorf("user %d missing embedding config", userID)
+			return nil, fmt.Errorf("请先在设置中配置 Embedding 服务")
 		}
-		return rag.NewEmbedder(ctx, cfg)
+		return rag.NewEmbedderFromRegistry(ctx, registry, cfg)
 	}
 
 	parentRepo := repository.NewParentBlockRepository(a.mysqlDB)

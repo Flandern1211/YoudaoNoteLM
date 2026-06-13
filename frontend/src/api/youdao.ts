@@ -1,65 +1,115 @@
 import client from './client';
-import type { ApiResponse } from './auth';
 
-// ============ Types ============
+// ===== Types =====
 
-export interface YoudaoNote {
-  note_id: string;
-  title: string;
-  content: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface YoudaoNotebook {
-  notebook_id: string;
+export interface YoudaoNoteItem {
+  id: string;
   name: string;
-  notes: YoudaoNote[];
+  type: 'file' | 'dir';
+  parentId: string;
 }
 
 export interface YoudaoBindStatus {
   bound: boolean;
   status?: string;
-  email?: string;
-  bind_time?: string;
 }
 
-// ============ API Functions ============
+export interface YoudaoImportResult {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  user_id: number;
+  notebook_id: number;
+  name: string;
+  type: string;
+  external_id: string;
+  status: string;
+  vectorized: boolean;
+  markdown_content: string;
+}
 
-// 1. List Youdao notebooks
-export async function listNotebooks(): Promise<ApiResponse<YoudaoNotebook[]>> {
-  const res = await client.get<ApiResponse<YoudaoNotebook[]>>('/youdao/notebooks');
+export interface YoudaoBatchImportResult {
+  task_id: string;
+  source_ids: number[];
+}
+
+// ===== API Functions =====
+
+/**
+ * 查询有道云笔记绑定状态
+ */
+export async function getBindStatus(): Promise<{
+  code: number;
+  data: YoudaoBindStatus;
+  message?: string;
+}> {
+  const res = await client.get('/youdao/bind');
   return res.data;
 }
 
-// 2. Import notes from Youdao
-export async function importNotesBatch(
-  noteIds: string[],
-  notebookId: number,
-  noteNames?: Record<string, string>
-): Promise<ApiResponse<{ task_id: string; source_ids: number[] }>> {
-  const res = await client.post<ApiResponse<{ task_id: string; source_ids: number[] }>>('/youdao/import', {
-    note_ids: noteIds,
+/**
+ * 绑定有道云笔记 API Key
+ */
+export async function bindApiKey(apiKey: string): Promise<{
+  code: number;
+  message?: string;
+}> {
+  const res = await client.post('/youdao/bind', { api_key: apiKey });
+  return res.data;
+}
+
+/**
+ * 解绑有道云笔记账号
+ */
+export async function unbind(): Promise<{
+  code: number;
+  message?: string;
+}> {
+  const res = await client.delete('/youdao/bind');
+  return res.data;
+}
+
+/**
+ * 浏览有道云笔记目录
+ */
+export async function listNotes(folderId?: string): Promise<{
+  code: number;
+  data: YoudaoNoteItem[];
+  message?: string;
+}> {
+  const params = folderId ? { folderId } : {};
+  const res = await client.get('/youdao/notes', { params });
+  console.log('youdao listNotes response:', JSON.stringify(res.data, null, 2));
+  return res.data;
+}
+
+/**
+ * 导入单篇有道云笔记
+ */
+export async function importNote(fileId: string, notebookId: number): Promise<{
+  code: number;
+  data: YoudaoImportResult;
+  message?: string;
+}> {
+  const res = await client.post('/youdao/import', {
+    file_id: fileId,
     notebook_id: notebookId,
-    note_names: noteNames,
   });
   return res.data;
 }
 
-// 3. Get bind status
-export async function getBindStatus(): Promise<ApiResponse<YoudaoBindStatus>> {
-  const res = await client.get<ApiResponse<YoudaoBindStatus>>('/youdao/bind-status');
-  return res.data;
-}
-
-// 4. Bind API key
-export async function bindApiKey(apiKey: string): Promise<ApiResponse> {
-  const res = await client.post<ApiResponse>('/youdao/bind', { api_key: apiKey });
-  return res.data;
-}
-
-// 5. Unbind
-export async function unbind(): Promise<ApiResponse> {
-  const res = await client.post<ApiResponse>('/youdao/unbind');
+/**
+ * 批量导入有道云笔记
+ */
+export async function importNotesBatch(fileIds: string[], notebookId: number, fileNames?: Record<string, string>): Promise<{
+  code: number;
+  data: YoudaoBatchImportResult;
+  message?: string;
+}> {
+  const res = await client.post('/youdao/import/batch', {
+    file_ids: fileIds,
+    notebook_id: notebookId,
+    file_names: fileNames,
+  });
   return res.data;
 }

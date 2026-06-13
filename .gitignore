@@ -22,6 +22,8 @@ go.work.sum
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
 
 # Environment and secrets
 .env
@@ -41,9 +43,14 @@ go.work.sum
 /dist/
 /out/
 
+
 # claude
 .claude/
 .superpowers
+claude.md
+/configs/config.yaml
+/uploads/
+
 
 # docs
 docs/
@@ -100,3 +107,40 @@ frontend/*.tsbuildinfo
 
 # Testing
 frontend/coverage/
+
+
+ffmpeg.zip
+
+
+CLAUDE.local.md
+
+
+markitdown_service
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+*.m4a
+
+# Test commands and integration tests
+cmd/test_*/
+cmd/seed_*/
+tests/integration/
+
+# Debug and temporary test files
+response*.json
+test_output.txt
+test_result.txt
+test_*.ps1
+tasks.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test screenshots
+frontend/test-screenshots/
