@@ -30,7 +30,7 @@ export interface ReferenceData {
 }
 
 export interface StreamEvent {
-  type: 'token' | 'reference' | 'done' | 'error' | 'message' | 'title';
+  type: 'token' | 'reference' | 'done' | 'error' | 'message' | 'title' | 'tool_call' | 'tool_result';
   content: string;
   data: ReferenceData[] | number | null;
 }

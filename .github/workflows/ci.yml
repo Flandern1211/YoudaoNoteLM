@@ -28,7 +28,7 @@ jobs:
       # 步骤1：检出代码
       # 作用：从 GitHub 仓库拉取最新代码到工作目录
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 步骤2：设置 Go 环境
       # 作用：安装指定版本的 Go 语言环境
@@ -88,7 +88,7 @@ jobs:
     steps:
       # 步骤1：检出代码
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 步骤2：设置 Go 环境
       - name: Set up Go
@@ -130,7 +130,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
