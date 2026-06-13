@@ -87,11 +87,9 @@ jobs:
             # 创建目录（如果不存在）
             mkdir -p "$DEPLOY_DIR/configs"
 
-            # 首次部署：下载 docker-compose.yml
-            if [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
-              curl -fsSL "https://raw.githubusercontent.com/Flandern1211/YoudaoNoteLM/develop/docs/deploy/docker-compose.yml" -o "$DEPLOY_DIR/docker-compose.yml"
-              echo "✅ docker-compose.yml downloaded"
-            fi
+            # 更新 docker-compose.yml
+            curl -fsSL "https://raw.githubusercontent.com/Flandern1211/YoudaoNoteLM/develop/docker-compose.yml" -o "$DEPLOY_DIR/docker-compose.yml"
+            echo "✅ docker-compose.yml updated"
 
             cd "$DEPLOY_DIR"
 
@@ -99,11 +97,11 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             # 拉取最新镜像
-            docker compose pull app
-            echo "✅ Image pulled"
+            docker compose pull
+            echo "✅ Images pulled"
 
-            # 重启服务（只重建 app 容器）
-            docker compose up -d app
+            # 重启所有服务
+            docker compose up -d
             echo "✅ Services restarted"
 
             # 等待启动
@@ -190,11 +188,9 @@ jobs:
             # 创建目录（如果不存在）
             mkdir -p "$DEPLOY_DIR/configs"
 
-            # 首次部署：下载 docker-compose.yml
-            if [ ! -f "$DEPLOY_DIR/docker-compose.yml" ]; then
-              curl -fsSL "https://raw.githubusercontent.com/Flandern1211/YoudaoNoteLM/develop/docs/deploy/docker-compose.yml" -o "$DEPLOY_DIR/docker-compose.yml"
-              echo "✅ docker-compose.yml downloaded"
-            fi
+            # 更新 docker-compose.yml
+            curl -fsSL "https://raw.githubusercontent.com/Flandern1211/YoudaoNoteLM/develop/docker-compose.yml" -o "$DEPLOY_DIR/docker-compose.yml"
+            echo "✅ docker-compose.yml updated"
 
             cd "$DEPLOY_DIR"
 
@@ -202,11 +198,11 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             # 拉取最新镜像
-            docker compose pull app
-            echo "✅ Image pulled"
+            docker compose pull
+            echo "✅ Images pulled"
 
-            # 重启服务（只重建 app 容器）
-            docker compose up -d app
+            # 重启所有服务
+            docker compose up -d
             echo "✅ Services restarted"
 
             # 等待启动
