@@ -70,7 +70,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            DEPLOY_DIR="/home/flandern/youdaonote"
+            DEPLOY_DIR="/home/flandern/youdaonotelm"
 
             # 创建目录（如果不存在）
             mkdir -p "$DEPLOY_DIR/configs"
@@ -161,7 +161,7 @@ jobs:
           key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            DEPLOY_DIR="/home/flandern/youdaonote"
+            DEPLOY_DIR="/home/flandern/youdaonotelm"
 
             # 创建目录（如果不存在）
             mkdir -p "$DEPLOY_DIR/configs"
