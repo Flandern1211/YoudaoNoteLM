@@ -65,6 +65,6 @@ external:
     secret_key: "your_minio_password"  # 与 .env 中 MINIO_ROOT_PASSWORD 一致
     bucket: "youdaonotelm"
   youdao:
-    cli_path: "python3"  # 使用 python3 执行 pull.py
-    converter_script_path: "/opt/youdaonote-pull/pull.py"
+    cli_path: "python3"  # 使用 python3 执行转换脚本
+    converter_script_path: "/app/scripts/youdao/convert_to_markdown.py"  # 容器内路径
     cookies_path: "/app/configs/youdao_cookies.json"  # 容器内路径
