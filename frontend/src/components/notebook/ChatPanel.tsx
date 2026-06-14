@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Plus, MessageSquare, Trash2, Save, Loader2,
-  ChevronDown, Sparkles, Edit3, Square, X
+  ChevronDown, Sparkles, Edit3, Square, X, Copy, Check
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,67 +10,112 @@ import { useNotebookStore } from '../../stores/useNotebookStore';
 import { cn } from '../../utils/cn';
 import type { NoteType, Reference } from '../../types';
 
-// Reference popover component
-function ReferencePopover({ references }: { references: Reference[] }) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
+// Reference popover component - fixed positioning, never clipped
+function ReferenceCitation({
+  refIndex,
+  reference,
+}: {
+  refIndex: number;
+  reference: Reference;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpenIndex(null);
+    if (!open) return;
+    function handleOutside(e: MouseEvent) {
+      if (
+        popRef.current && !popRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.top - 8, left: rect.left + rect.width / 2 });
+    }
+    setOpen(true);
+  };
 
   return (
-    <span className="inline-flex gap-1 align-super text-xs">
-      {references.map((ref, idx) => (
-        <span key={idx} className="relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpenIndex(openIndex === idx ? null : idx);
-            }}
-            className="inline-flex items-center justify-center w-4 h-4 rounded text-[10px] font-bold bg-accent/20 text-accent hover:bg-accent/30 transition-colors cursor-pointer"
-          >
-            {idx + 1}
-          </button>
-          {openIndex === idx && (
-            <div
-              ref={popoverRef}
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-bg-card border border-border-light rounded-xl shadow-xl z-50 overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-bg-secondary/50">
-                <span className="text-xs font-medium text-accent truncate">{ref.sourceName}</span>
-                <button
-                  onClick={() => setOpenIndex(null)}
-                  className="p-0.5 hover:bg-bg-hover rounded cursor-pointer"
-                >
-                  <X size={12} className="text-text-muted" />
-                </button>
-              </div>
-              <div className="px-3 py-2 max-h-48 overflow-y-auto">
-                <div className="prose prose-xs prose-invert max-w-none text-xs">
-                  <Markdown remarkPlugins={[remarkGfm]}>{ref.chunkContent}</Markdown>
-                </div>
-              </div>
-              <div className="px-3 py-1.5 border-t border-border bg-bg-secondary/30">
-                <span className="text-[10px] text-text-muted">
-                  相关度: {(ref.score * 100).toFixed(0)}%
-                </span>
-              </div>
-            </div>
-          )}
-        </span>
-      ))}
+    <span className="inline align-super text-[10px] ml-px mr-0.5 leading-none">
+      <button
+        ref={btnRef}
+        onClick={handleToggle}
+        className="inline-flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded text-[10px] font-bold bg-accent/20 text-accent hover:bg-accent/30 transition-colors cursor-pointer"
+      >
+        {refIndex}
+      </button>
+      {open && pos && (
+        <div
+          ref={popRef}
+          style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            transform: 'translate(-50%, -100%)',
+          }}
+          className="w-72 bg-bg-card border border-border-light rounded-lg shadow-xl z-[9999]"
+        >
+          <div className="px-3 py-2 max-h-48 overflow-y-auto prose prose-xs prose-invert max-w-none text-xs">
+            <Markdown remarkPlugins={[remarkGfm]}>
+              {extractContent(reference.chunkContent)}
+            </Markdown>
+          </div>
+        </div>
+      )}
     </span>
   );
 }
 
-// Custom markdown component with reference support
+// Extract content after "正文：" prefix, stripping "标题路径：..." semantic enhancement
+function extractContent(raw: string): string {
+  const match = raw.match(/正文[：:]\s*([\s\S]*)/);
+  return match ? match[1].trim() : raw;
+}
+
+// Recursively process React children, replacing [N] text with inline citations
+function processChildren(
+  children: ReactNode,
+  references: Reference[],
+): ReactNode {
+  return React.Children.map(children, (child) => {
+    if (typeof child === 'string') {
+      const parts = child.split(/(\[\d+\])/g);
+      return parts.map((part, i) => {
+        const match = part.match(/^\[(\d+)\]$/);
+        if (match) {
+          const idx = parseInt(match[1]);
+          if (idx >= 1 && idx <= references.length) {
+            return <ReferenceCitation key={`ref-${i}`} refIndex={idx} reference={references[idx - 1]} />;
+          }
+        }
+        return part;
+      });
+    }
+    if (React.isValidElement(child) && child.props.children) {
+      return React.cloneElement(child, {
+        children: processChildren(child.props.children, references),
+      });
+    }
+    return child;
+  });
+}
+
+// Markdown renderer with inline citation support
 function MarkdownWithReferences({
   content,
   references
@@ -78,9 +123,7 @@ function MarkdownWithReferences({
   content: string;
   references?: Reference[];
 }) {
-  if (!content) {
-    return null;
-  }
+  if (!content) return null;
 
   if (!references || references.length === 0) {
     return (
@@ -90,31 +133,32 @@ function MarkdownWithReferences({
     );
   }
 
-  // Split content by reference markers like [1], [2], etc.
-  const parts = content.split(/(\[\d+\])/g);
+  // Override all block-level components that may contain [N] markers
+  const makeComponent = (Tag: string) => {
+    return ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
+      <Tag {...props}>{processChildren(children, references)}</Tag>
+    );
+  };
+
+  const components = {
+    p: makeComponent('p'),
+    li: makeComponent('li'),
+    h1: makeComponent('h1'),
+    h2: makeComponent('h2'),
+    h3: makeComponent('h3'),
+    h4: makeComponent('h4'),
+    h5: makeComponent('h5'),
+    h6: makeComponent('h6'),
+    td: makeComponent('td'),
+    th: makeComponent('th'),
+    blockquote: makeComponent('blockquote'),
+  };
 
   return (
     <div className="prose prose-sm prose-invert max-w-none">
-      {parts.map((part, i) => {
-        if (!part) return null;
-        const refMatch = part.match(/^\[(\d+)\]$/);
-        if (refMatch) {
-          const refIdx = parseInt(refMatch[1]) - 1;
-          if (refIdx >= 0 && refIdx < references.length) {
-            return (
-              <ReferencePopover
-                key={i}
-                references={[references[refIdx]]}
-              />
-            );
-          }
-        }
-        return (
-          <span key={i} className="inline">
-            <Markdown remarkPlugins={[remarkGfm]}>{part}</Markdown>
-          </span>
-        );
-      })}
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </Markdown>
     </div>
   );
 }
@@ -133,6 +177,7 @@ export default function ChatPanel() {
   const [showConvList, setShowConvList] = useState(false);
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editConvTitle, setEditConvTitle] = useState('');
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevConvIdRef = useRef<string | null>(null);
 
@@ -183,6 +228,16 @@ export default function ChatPanel() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleCopyMessage = async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -352,7 +407,7 @@ export default function ChatPanel() {
             key={msg.id}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className={cn('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+            className={cn('flex gap-3 group/msg mb-2', msg.role === 'user' ? 'justify-end' : 'justify-start')}
           >
             {msg.role === 'assistant' && (
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-teal flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -361,14 +416,32 @@ export default function ChatPanel() {
             )}
             <div
               className={cn(
-                'max-w-[80%] rounded-2xl px-4 py-3 text-sm',
+                'max-w-[80%] rounded-2xl px-4 py-3 text-sm group relative',
                 msg.role === 'user'
                   ? 'bg-accent text-white rounded-br-md'
                   : 'bg-bg-card border border-border-light rounded-bl-md'
               )}
             >
               {msg.role === 'user' ? (
-                <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                <>
+                  <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                  <button
+                    onClick={() => handleCopyMessage(msg.id, msg.content)}
+                    className={cn(
+                      'absolute -bottom-4 right-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs transition-all cursor-pointer',
+                      copiedMessageId === msg.id
+                        ? 'text-success'
+                        : 'text-text-muted hover:text-accent hover:bg-accent/10'
+                    )}
+                    title="复制"
+                  >
+                    {copiedMessageId === msg.id ? (
+                      <><Check size={11} /> 已复制</>
+                    ) : (
+                      <><Copy size={11} /> 复制</>
+                    )}
+                  </button>
+                </>
               ) : (
                 <>
                   {/* AI message with loading state */}
@@ -390,6 +463,21 @@ export default function ChatPanel() {
                   )}
 
                   <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                      className={cn(
+                        'flex items-center gap-1 text-xs transition-colors cursor-pointer',
+                        copiedMessageId === msg.id
+                          ? 'text-success'
+                          : 'text-text-muted hover:text-accent'
+                      )}
+                    >
+                      {copiedMessageId === msg.id ? (
+                        <><Check size={11} /> 已复制</>
+                      ) : (
+                        <><Copy size={11} /> 复制</>
+                      )}
+                    </button>
                     <button
                       onClick={() => handleSaveAsNote(msg.content)}
                       className="flex items-center gap-1 text-xs text-text-muted hover:text-accent transition-colors cursor-pointer"

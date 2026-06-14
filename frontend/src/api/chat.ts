@@ -247,13 +247,11 @@ export function parseSSEStream(
                   break;
                 case 'tool_call':
                 case 'tool_result':
-                  // 工具调用中间事件，不需要展示给用户，静默忽略
+                  // 工具调用和结果事件不展示给用户，仅记录日志
                   console.log('Tool event:', eventType, data.content);
                   break;
                 default:
                   console.log('Unknown event type:', eventType);
-                  // 未知事件类型，不作为 token 显示
-                  break;
               }
             } catch (e) {
               console.error('Failed to parse SSE data:', e, 'Raw line:', trimmedLine);

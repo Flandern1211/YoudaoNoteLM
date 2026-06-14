@@ -51,6 +51,7 @@ func NewRouter(
 	captchaSvc service.CaptchaService,
 	tokenBlacklist service.TokenBlacklistService,
 	chatAgentService service.ChatAgentService,
+	convService service.ConversationService,
 	configService service.ConfigService,
 	youdaoService service.YoudaoService,
 ) *Router {
@@ -60,7 +61,7 @@ func NewRouter(
 		notebookCtrl:   notebook.NewController(notebookService),
 		sourceCtrl:     source.NewController(sourceService, tokenBlacklist),
 		generationCtrl: generation.NewController(generationService),
-		chatCtrl:       chat.NewController(chatAgentService),
+		chatCtrl:       chat.NewController(chatAgentService, convService),
 		tokenBlacklist: tokenBlacklist,
 		importCtrl:     importn.NewController(importerService),
 		searchCtrl:     search.NewController(searchAgentService, tokenBlacklist),

@@ -8,15 +8,15 @@ import (
 	"YoudaoNoteLm/pkg/cache"
 )
 
-// FormatRetrievalResults 格式化检索结果
-func FormatRetrievalResults(results []*rag.RetrieveResult) string {
+// FormatRetrievalResults 格式化检索结果，offset 用于多次检索时编号连续
+func FormatRetrievalResults(results []*rag.RetrieveResult, offset int) string {
 	if len(results) == 0 {
 		return "未找到相关资料"
 	}
 
 	var sb strings.Builder
 	for i, r := range results {
-		sb.WriteString(fmt.Sprintf("[%d] 来源: %s\n", i+1, r.SourceName))
+		sb.WriteString(fmt.Sprintf("[%d] 来源: %s\n", offset+i+1, r.SourceName))
 		if r.Heading != "" {
 			sb.WriteString(fmt.Sprintf("章节: %s\n", r.Heading))
 		}

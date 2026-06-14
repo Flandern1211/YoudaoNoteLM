@@ -170,8 +170,6 @@ func (a *App) initDependencies() {
 	tokenBlacklistSvc := service.NewTokenBlacklistService(a.redis)
 	userSvc := service.NewUserService(userRepo, verifyCodeSvc, minioStorage)
 	authSvc := service.NewAuthService(userRepo, userSvc, verifyCodeSvc, captchaSvc, tokenBlacklistSvc)
-	notebookSvc := service.NewNotebookService(notebookRepo)
-	sourceSvc := service.NewSourceService(sourceRepo, minioStorage)
 	adminSvc := service.NewAdminService(userRepo, sysConfigRepo, nil)
 
 	// 创建缓存
@@ -184,6 +182,10 @@ func (a *App) initDependencies() {
 
 	// 创建 IngestionService（向量入库）
 	ingestionSvc := a.initIngestionService(sourceRepo, configSvc)
+
+	// 创建笔记本和资料来源服务（需要依赖 IngestionService 来删除向量数据）
+	notebookSvc := service.NewNotebookService(notebookRepo, sourceRepo, ingestionSvc)
+	sourceSvc := service.NewSourceService(sourceRepo, minioStorage, ingestionSvc)
 
 	// 创建导入服务（ASR 通过 ConfigService 动态获取，RAG 通过 IngestionService）
 	importerSvc := service.NewImporterService(
@@ -240,10 +242,11 @@ func (a *App) initDependencies() {
 	// 创建生成服务（SearchService 暂为 nil，后续可接入）
 	generationSvc := service.NewGenerationService(a.ragRetriever, nil, nil)
 
-	// 创建 ChatAgentService
+	// 创建 ChatAgentService 和 ConversationService
 	chatCache := cache.NewChatCache(a.redis)
 	chatAgentSvc := service.NewChatAgentService(configSvc, ragRetriever, conversationRepo, messageRepo, chatCache)
-	logger.Info("ChatAgentService 初始化成功")
+	convSvc := service.NewConversationService(conversationRepo, messageRepo, chatCache)
+	logger.Info("ChatAgentService 和 ConversationService 初始化成功")
 
 	a.router = api.NewRouter(
 		userSvc,
@@ -259,6 +262,7 @@ func (a *App) initDependencies() {
 		captchaSvc,
 		tokenBlacklistSvc,
 		chatAgentSvc,
+		convSvc,
 		configSvc,
 		youdaoSvc,
 	)

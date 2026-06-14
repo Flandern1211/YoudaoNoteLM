@@ -107,6 +107,7 @@ frontend/*.tsbuildinfo
 
 # Testing
 frontend/coverage/
+/claude.md
 
 
 ffmpeg.zip
@@ -144,3 +145,4 @@ __pycache__/
 
 # Test screenshots
 frontend/test-screenshots/
+/RAG-ChatAgent-Architecture.md

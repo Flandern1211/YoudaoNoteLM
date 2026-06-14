@@ -4,26 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
+	"YoudaoNoteLm/internal/model/dto/response"
 	"YoudaoNoteLm/internal/rag"
 )
 
 // RAGRetrieverTool 知识库检索工具
 type RAGRetrieverTool struct {
-	retriever rag.RAGRetriever
-	userID    uint
-	sourceIDs []uint
+	retriever  rag.RAGRetriever
+	userID     uint
+	sourceIDs  []uint
+	references *[]response.Reference // 引用收集器
+	mu         sync.Mutex            // 保护 references 和 offset
+	offset     int                   // 多次检索时的编号偏移
 }
 
 // NewRAGRetrieverTool 创建检索工具
-func NewRAGRetrieverTool(retriever rag.RAGRetriever, userID uint, sourceIDs []uint) tool.InvokableTool {
+func NewRAGRetrieverTool(retriever rag.RAGRetriever, userID uint, sourceIDs []uint, references *[]response.Reference) tool.InvokableTool {
 	return &RAGRetrieverTool{
-		retriever: retriever,
-		userID:    userID,
-		sourceIDs: sourceIDs,
+		retriever:  retriever,
+		userID:     userID,
+		sourceIDs:  sourceIDs,
+		references: references,
 	}
 }
 
@@ -68,9 +74,28 @@ func (t *RAGRetrieverTool) InvokableRun(ctx context.Context, argumentsInJSON str
 		SourceIDs: t.sourceIDs,
 		TopK:      params.TopK,
 	})
+	fmt.Println("------------------", results)
 	if err != nil {
 		return "检索失败: " + err.Error(), nil
 	}
 
-	return FormatRetrievalResults(results), nil
+	// 追加引用，多次检索时编号连续
+	t.mu.Lock()
+	currentOffset := t.offset
+	if t.references != nil {
+		for _, r := range results {
+			*t.references = append(*t.references, response.Reference{
+				SourceID:      r.SourceID,
+				SourceName:    r.SourceName,
+				ParentBlockID: r.ParentBlockID,
+				ChunkContent:  r.Content,
+				Score:         r.Score,
+			})
+		}
+	}
+	t.offset += len(results)
+	t.mu.Unlock()
+
+	fmt.Println("---------------", t, t.references)
+	return FormatRetrievalResults(results, currentOffset), nil
 }
