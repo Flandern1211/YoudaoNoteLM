@@ -147,3 +147,8 @@ docker-compose.yml
 docker-entrypoint.sh
 .dockerignore
 configs/config.docker.yaml.example
+Dockerfile
+nginx.conf
+
+github
+.github
