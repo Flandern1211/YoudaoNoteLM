@@ -1,8 +1,8 @@
 services:
   # ========== Go 应用 ==========
   app:
-    image: ${DOCKER_IMAGE:-flandern1211/youdaonote:latest}
-    container_name: youdaonote-app
+    image: ${DOCKER_IMAGE:-flandern/youdaonotelm:latest}
+    container_name: youdaonotelm-app
     ports:
       - "${APP_PORT:-8080}:8080"
     volumes:
@@ -27,13 +27,13 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== MySQL ==========
   mysql:
-    image: mysql:8.0
-    container_name: youdaonote-mysql
+    image: mysql:8.4
+    container_name: youdaonotelm-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-youdao}
@@ -51,13 +51,13 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== Redis ==========
   redis:
-    image: redis:7-alpine
-    container_name: youdaonote-redis
+    image: redis:7.4-alpine
+    container_name: youdaonotelm-redis
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
@@ -70,13 +70,13 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== MinIO 对象存储 ==========
   minio:
     image: minio/minio:latest
-    container_name: youdaonote-minio
+    container_name: youdaonotelm-minio
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -90,13 +90,13 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== Milvus 依赖：etcd ==========
   etcd:
     image: quay.io/coreos/etcd:v3.5.18
-    container_name: youdaonote-etcd
+    container_name: youdaonotelm-etcd
     environment:
       ETCD_AUTO_COMPACTION_MODE: revision
       ETCD_AUTO_COMPACTION_RETENTION: "1000"
@@ -111,13 +111,13 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== Milvus 依赖：MinIO (内部存储) ==========
   milvus-minio:
     image: minio/minio:latest
-    container_name: youdaonote-milvus-minio
+    container_name: youdaonotelm-milvus-minio
     environment:
       MINIO_ACCESS_KEY: ${MILVUS_MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MILVUS_MINIO_SECRET_KEY:-minioadmin}
@@ -130,13 +130,13 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== Milvus 向量数据库 ==========
   milvus:
-    image: milvusdb/milvus:latest
-    container_name: youdaonote-milvus
+    image: milvusdb/milvus:v2.5.10
+    container_name: youdaonotelm-milvus
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
@@ -155,13 +155,13 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
   # ========== MarkItDown 文档转换服务 ==========
   markitdown:
-    image: flandern/markitdown:latest
-    container_name: youdaonote-markitdown
+    image: ${MARKITDOWN_IMAGE:-flandern1211/markitdown:latest}
+    container_name: youdaonotelm-markitdown
     ports:
       - "${MARKITDOWN_PORT:-8085}:8085"
     volumes:
@@ -173,7 +173,7 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - youdaonote-net
+      - youdaonotelm-net
     restart: unless-stopped
 
 # ========== 数据卷 ==========
@@ -197,5 +197,5 @@ volumes:
 
 # ========== 网络 ==========
 networks:
-  youdaonote-net:
+  youdaonotelm-net:
     driver: bridge

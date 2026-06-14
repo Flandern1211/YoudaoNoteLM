@@ -13,7 +13,7 @@ require (
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-audio/audio v1.0.0
-	github.com/go-audio/wav v1.1.0
+	github.com/go-audio/wav v1.1.0                           vb
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
